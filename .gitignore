@@ -1,0 +1,165 @@
+# Godot 4+ specific ignores
+.godot/
+.android/
+
+# Godot-specific ignores
+.import/
+.asset_editor/
+.asset_editor.old/
+.asset_import_meta/
+.asset_import_meta.old/
+.mono/
+*.import
+*_import_*
+*.tmp
+*.translation
+*.translation.import
+*.stex
+*.stex.import
+*.scn.import
+*.tscn.import
+*.tres.import
+*.res.import
+*.dds.import
+*.wav.import
+*.ogg.import
+*.mp3.import
+*.png.import
+*.jpg.import
+*.jpeg.import
+*.glb.import
+*.gltf.import
+*.obj.import
+*.fbx.import
+*.blend.import
+*.dae.import
+*.escn.import
+*.escn.remap
+*.import_metadata
+*.import_meta
+*.import_meta.renames
+*.import_meta.renames.old
+*.import_meta.renames.new
+*.import_meta.renames.working
+*.import_meta.renames.working.old
+*.import_meta.renames.working.new
+*.import_meta.renames.working.old.new
+*.import_meta.renames.working.new.old
+*.import_meta.renames.working.old.new.old
+*.import_meta.renames.working.new.old.new
+
+# Build results
+bin/
+bin-debug/
+bin-release/
+obj/
+.vs/
+
+# Visual Studio/Monodevelop user preferences
+*.userprefs
+*.usertest
+*.sln.docstates
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Mono auto generated files
+*.pidb
+*.csproj.*
+*.unityproj
+*.csproj
+*.unityproj
+*.DS_Store
+*.pidb.meta
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+
+# Godot-specific ignores
+*.mono/
+*.mono.old/
+*.mono.new/
+*.mono.import/
+*.mono.import.old/
+*.mono.import.new/
+*.mono.import.meta/
+*.mono.import.meta.old/
+*.mono.import.meta.new/
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+
+# Local development settings
+*.localconfig
+*.localconfig.meta
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Rider
+.idea/
+*.sln.iml
+*.csproj.iml
+
+# NuGet Packages
+*.nupkg
+*.nupkg.meta
+*.nupkg.*
+
+# Local History for Visual Studio
+.localhistory/
+
+# Builds
+Builds/
+Build/
+
+# Visual Studio cache directory
+.vs/
+
+# MSBuild Binary and Structured Log
+*.binlog
+
+# Local development settings
+*.localconfig
+*.localconfig.meta
+
+# Godot export templates
+export_presets.cfg
+export_presets.cfg.import
+
+# Godot editor settings
+editor_settings-3.tres
+editor_settings.tres
+
+# Godot import overrides
+*.import_override
+*.import_override.meta
+
+# Godot C# UID files
+*.cs.uid
+
+# Godot UID metadata
+*.gd.uid
+*.tscn.uid
+*.tres.uid
+*.res.uid
