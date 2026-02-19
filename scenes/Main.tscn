@@ -12,22 +12,89 @@ geometry_parsed_geometry_type = 1
 agent_height = 2.0
 agent_max_slope = 30.0
 
-[node name="Main" type="Node"]
+[sub_resource type="Gradient" id="Gradient_c01mt"]
+offsets = PackedFloat32Array(0.2, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_nxtc6"]
+noise_type = 2
+frequency = 0.03
+cellular_jitter = 3.0
+cellular_return_type = 0
+domain_warp_enabled = true
+domain_warp_type = 1
+domain_warp_amplitude = 50.0
+domain_warp_fractal_type = 2
+domain_warp_fractal_lacunarity = 1.5
+domain_warp_fractal_gain = 1.0
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_jlsqs"]
+noise = SubResource("FastNoiseLite_nxtc6")
+color_ramp = SubResource("Gradient_c01mt")
+seamless = true
+
+[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_q8u5g"]
+_shader_parameters = {
+&"bias_distance": 512.0,
+&"blend_sharpness": 0.5,
+&"depth_blur": 0.0,
+&"enable_macro_variation": true,
+&"enable_projection": true,
+&"flat_terrain_normals": false,
+&"macro_variation1": Color(1, 1, 1, 1),
+&"macro_variation2": Color(1, 1, 1, 1),
+&"macro_variation_slope": 0.333,
+&"mipmap_bias": 1.0,
+&"noise1_angle": 0.0,
+&"noise1_offset": Vector2(0.5, 0.5),
+&"noise1_scale": 0.04,
+&"noise2_scale": 0.076,
+&"noise_texture": SubResource("NoiseTexture2D_jlsqs"),
+&"projection_threshold": 0.8
+}
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lhr70"]
+transparency = 4
+cull_mode = 2
+vertex_color_use_as_albedo = true
+backlight_enabled = true
+backlight = Color(0.5, 0.5, 0.5, 1)
+distance_fade_mode = 1
+distance_fade_min_distance = 128.0
+distance_fade_max_distance = 96.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_wp0k4"]
+generated_type = 1
+height_offset = 0.5
+material_override = SubResource("StandardMaterial3D_lhr70")
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 128.0
+
+[sub_resource type="Terrain3DAssets" id="Terrain3DAssets_bjd11"]
+mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_wp0k4")])
+
+[node name="Main" type="Node" unique_id=487858458]
 script = ExtResource("1")
 
-[node name="Environment" parent="." instance=ExtResource("3")]
+[node name="Environment" parent="." unique_id=1617233061 instance=ExtResource("3")]
 
-[node name="Player" parent="." instance=ExtResource("2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 50, 0)
+[node name="Player" parent="." unique_id=1826463096 instance=ExtResource("2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 512, 200, 512)
 
-[node name="Enemy" parent="." node_paths=PackedStringArray("target") instance=ExtResource("4")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 50, -10)
+[node name="Enemy" parent="." unique_id=62428295 node_paths=PackedStringArray("target") instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 540, 200, 540)
 target = NodePath("../Player")
 
-[node name="UI" parent="." instance=ExtResource("5")]
+[node name="UI" parent="." unique_id=246979442 instance=ExtResource("5")]
 
-[node name="RuntimeNavigationBaker" type="Node" parent="." node_paths=PackedStringArray("player")]
+[node name="NavBaker" type="Node" parent="." unique_id=1110305237]
 script = ExtResource("6")
 enabled = false
 template = SubResource("NavigationMesh_run")
-player = NodePath("../Player")
+
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=226140066]
+material = SubResource("Terrain3DMaterial_q8u5g")
+assets = SubResource("Terrain3DAssets_bjd11")
+top_level = true
+metadata/_edit_lock_ = true
