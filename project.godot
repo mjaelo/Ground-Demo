@@ -26,3 +26,8 @@ project/assembly_name="terraintest"
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="mobile"
+mesh_lod/lod_change/threshold_pixels=304.2

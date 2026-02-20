@@ -1,24 +1,21 @@
 [gd_scene format=3 uid="uid://je44v17jo1na"]
 
-[ext_resource type="Script" uid="uid://dakis6gu8b7nm" path="res://scripts/CodeGenerated.gd" id="1"]
+[ext_resource type="Script" uid="uid://dakis6gu8b7nm" path="res://scripts/terrain3d/Main.gd" id="1_c01mt"]
 [ext_resource type="PackedScene" uid="uid://domhm87hbhbg1" path="res://scenes/components/Player.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://bb2lp50sjndus" path="res://scenes/components/Environment.tscn" id="3"]
 [ext_resource type="PackedScene" uid="uid://di5fovhcyd7re" path="res://scenes/components/Enemy.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://d2jihfohphuue" path="res://scenes/components/UI.tscn" id="5"]
-[ext_resource type="Script" uid="uid://brh8x1wnycrl5" path="res://scripts/RuntimeNavigationBaker.gd" id="6"]
+[ext_resource type="Script" uid="uid://brh8x1wnycrl5" path="res://scripts/terrain3d/RuntimeNavigationBaker.gd" id="6"]
+[ext_resource type="Script" uid="uid://cyubaxo7uvm6l" path="res://scripts/terrain3d/terrain_assets_getter.gd" id="7_jlsqs"]
+[ext_resource type="Script" uid="uid://b6ohunvsaiuv8" path="res://scripts/terrain3d/generation_job.gd" id="8_jlsqs"]
 
-[sub_resource type="NavigationMesh" id="NavigationMesh_run"]
-geometry_parsed_geometry_type = 1
-agent_height = 2.0
-agent_max_slope = 30.0
-
-[sub_resource type="Gradient" id="Gradient_c01mt"]
+[sub_resource type="Gradient" id="Gradient_jlsqs"]
 offsets = PackedFloat32Array(0.2, 1)
 colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
 
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_nxtc6"]
-noise_type = 2
-frequency = 0.03
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_q8u5g"]
+seed = 12345
+frequency = 0.0009
 cellular_jitter = 3.0
 cellular_return_type = 0
 domain_warp_enabled = true
@@ -28,17 +25,21 @@ domain_warp_fractal_type = 2
 domain_warp_fractal_lacunarity = 1.5
 domain_warp_fractal_gain = 1.0
 
-[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_jlsqs"]
-noise = SubResource("FastNoiseLite_nxtc6")
-color_ramp = SubResource("Gradient_c01mt")
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_lhr70"]
+noise = SubResource("FastNoiseLite_q8u5g")
+color_ramp = SubResource("Gradient_jlsqs")
 seamless = true
 
 [sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_q8u5g"]
 _shader_parameters = {
+&"auto_base_texture": 0,
+&"auto_height_reduction": 0.1,
+&"auto_overlay_texture": 1,
+&"auto_slope": 1.0,
 &"bias_distance": 512.0,
-&"blend_sharpness": 0.5,
+&"blend_sharpness": 0.1,
 &"depth_blur": 0.0,
-&"enable_macro_variation": true,
+&"enable_macro_variation": false,
 &"enable_projection": true,
 &"flat_terrain_normals": false,
 &"macro_variation1": Color(1, 1, 1, 1),
@@ -49,9 +50,22 @@ _shader_parameters = {
 &"noise1_offset": Vector2(0.5, 0.5),
 &"noise1_scale": 0.04,
 &"noise2_scale": 0.076,
-&"noise_texture": SubResource("NoiseTexture2D_jlsqs"),
-&"projection_threshold": 0.8
+&"noise_texture": SubResource("NoiseTexture2D_lhr70"),
+&"projection_threshold": 0.8,
+&"world_noise_fragment_normals": false,
+&"world_noise_height": 64.0,
+&"world_noise_lod_distance": 7500.0,
+&"world_noise_max_octaves": 4,
+&"world_noise_min_octaves": 2,
+&"world_noise_offset": Vector3(0, -3, 0),
+&"world_noise_region_blend": 0.7499999850986601,
+&"world_noise_scale": 5.999999871476
 }
+world_background = 2
+auto_shader = true
+show_region_grid = true
+show_vertex_grid = true
+show_checkered = true
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lhr70"]
 transparency = 4
@@ -75,7 +89,7 @@ lod0_range = 128.0
 mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_wp0k4")])
 
 [node name="Main" type="Node" unique_id=487858458]
-script = ExtResource("1")
+script = ExtResource("1_c01mt")
 
 [node name="Environment" parent="." unique_id=1617233061 instance=ExtResource("3")]
 
@@ -90,11 +104,20 @@ target = NodePath("../Player")
 
 [node name="NavBaker" type="Node" parent="." unique_id=1110305237]
 script = ExtResource("6")
-enabled = false
-template = SubResource("NavigationMesh_run")
+
+[node name="TerrainAssetsGetter" type="Node" parent="." unique_id=1418671356]
+script = ExtResource("7_jlsqs")
+
+[node name="GenerationJob" type="Node" parent="." unique_id=1267096136]
+script = ExtResource("8_jlsqs")
 
 [node name="Terrain3D" type="Terrain3D" parent="." unique_id=226140066]
+data_directory = "res://terrain_data"
 material = SubResource("Terrain3DMaterial_q8u5g")
 assets = SubResource("Terrain3DAssets_bjd11")
+show_grid = true
+show_region_grid = true
+show_vertex_grid = true
+show_checkered = true
 top_level = true
 metadata/_edit_lock_ = true

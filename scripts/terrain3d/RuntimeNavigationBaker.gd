@@ -128,7 +128,8 @@ func _task_bake(p_center: Vector3) -> void:
 		var aabb: AABB = nav_mesh.filter_baking_aabb
 		aabb.position += nav_mesh.filter_baking_aabb_offset
 		var faces: PackedVector3Array = terrain.generate_nav_mesh_source_geometry(aabb, false)
-		source_geometry.add_faces(faces, Transform3D.IDENTITY)
+		if faces.size() > 0:
+			source_geometry.add_faces(faces, Transform3D.IDENTITY)
 	
 	if source_geometry.has_data():
 		NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source_geometry)
