@@ -7,11 +7,25 @@ extends Node
 
 # Lowest and highest terrain elevation (meters) used when importing the heightmap.
 @export var height_min: float = 0.0
-@export var height_max: float = 350.0
+@export var height_max: float = 1000.0
 # Noise frequency that shapes the terrain slopes/hills.
 @export var noise_frequency: float = 0.0009
+# Biome noise — very low frequency so biomes are much larger than regions.
+# Lower = bigger biomes, higher = smaller biomes.
+@export var biome_noise_frequency: float = 0.00015
+# How much the biome noise shapes the terrain.
+# biome_curve_flat: exponent in flat biomes — higher = flatter/lower ground (e.g. 4.0).
+# biome_curve_mountain: exponent in mountain biomes — lower = taller sharper peaks (e.g. 0.4).
+@export var biome_curve_flat: float = 5.0
+@export var biome_curve_mountain: float = 0.4
+# Mountains only appear where biome noise exceeds this threshold (0-1).
+# 0.75 = top 25% of the world is mountains. Higher = rarer mountains.
+@export var biome_mountain_threshold: float = 0.75
+# How wide the flat->mountain transition band is (0-1 of noise range after threshold).
+# Smaller = sharper edge, larger = wider gradual transition.
+@export var biome_transition_width: float = 0.2
 # Resolution of generated texture assets; higher = sharper textures.
-@export var texture_resolution: int = 1024
+@export var texture_resolution: int = 512
 # Auto shader slope angle for texture blending (steeper gets brown). Raise to push brown onto steeper faces.
 @export var auto_slope: float = 1.0
 # Max slope (degrees) to still consider ground "green"; steeper is brown.
@@ -31,7 +45,6 @@ extends Node
 # How often (seconds) to check for streaming updates.
 @export var stream_check_interval: float = 0.5
 
-var moved = false
 var _loaded_regions: Dictionary = {}
 var _stream_timer := 0.0
 # Track regions currently being generated off the main thread.
@@ -148,6 +161,11 @@ func _start_region_generation(terrain: Terrain3D, loc: Vector2i) -> void:
 		"height_min": height_min,
 		"height_max": height_max,
 		"noise_frequency": noise_frequency,
+		"biome_noise_frequency": biome_noise_frequency,
+		"biome_curve_flat": biome_curve_flat,
+		"biome_curve_mountain": biome_curve_mountain,
+		"biome_mountain_threshold": biome_mountain_threshold,
+		"biome_transition_width": biome_transition_width,
 		"foliage_extent": foliage_extent,
 		"foliage_step": foliage_step,
 		"foliage_max_slope_deg": foliage_max_slope_deg,
@@ -184,6 +202,9 @@ func _generate_region_job(job: Dictionary) -> Dictionary:
 	var region_origin_m := Vector3(loc.x * region_meters, 0, loc.y * region_meters)
 	var noise := FastNoiseLite.new()
 	noise.frequency = job.get("noise_frequency", noise_frequency)
+	var biome_noise := FastNoiseLite.new()
+	biome_noise.seed = 12345
+	biome_noise.frequency = job.get("biome_noise_frequency", biome_noise_frequency)
 	var hm_res: int = job.get("heightmap_resolution", heightmap_resolution)
 	var img: Image = Image.create_empty(hm_res, hm_res, false, Image.FORMAT_RF)
 	var world_size: float = region_meters
@@ -193,6 +214,20 @@ func _generate_region_job(job: Dictionary) -> Dictionary:
 			var ny := (y / float(hm_res)) * world_size + loc.y * world_size
 			var h := noise.get_noise_2d(nx, ny)
 			h = (h + 1.0) * 0.5
+			# Biome noise: very low frequency, smoothly controls terrain shape per world pos
+			var b := biome_noise.get_noise_2d(nx, ny)
+			b = (b + 1.0) * 0.5
+			# Use smoothstep over transition_width after threshold so mountains are rare and edges smooth
+			var threshold: float = job.get("biome_mountain_threshold", biome_mountain_threshold)
+			var tw: float = max(job.get("biome_transition_width", biome_transition_width), 0.01)
+			var t: float = smoothstep(threshold, threshold + tw, b)
+			# t=0 -> flat biome, t=1 -> mountain biome
+			var curve_exp: float = lerp(
+				job.get("biome_curve_flat", biome_curve_flat),
+				job.get("biome_curve_mountain", biome_curve_mountain),
+				t
+			)
+			h = pow(h, curve_exp)
 			img.set_pixel(x, y, Color(h, 0., 0., 1.))
 	var transforms: Array[Transform3D]
 	var width: int = job.get("foliage_extent", 0)
@@ -206,9 +241,9 @@ func _generate_region_job(job: Dictionary) -> Dictionary:
 		for z in range(0, width, step):
 			var pos_x := x + origin.x
 			var pos_z := z + origin.z
-			var h_val := _sample_height(noise, pos_x, pos_z, job)
+			var h_val := _sample_height(noise, biome_noise, pos_x, pos_z, job)
 			var pos := Vector3(pos_x, h_val, pos_z)
-			var normal: Vector3 = _sample_normal(noise, pos_x, pos_z, job)
+			var normal: Vector3 = _sample_normal(noise, biome_noise, pos_x, pos_z, job)
 			var slope_deg := rad_to_deg(acos(clamp(normal.dot(Vector3.UP), -1.0, 1.0)))
 			if slope_deg > job.get("foliage_max_slope_deg", foliage_max_slope_deg):
 				continue
@@ -222,17 +257,28 @@ func _generate_region_job(job: Dictionary) -> Dictionary:
 		"transforms": transforms
 	}
 
-func _sample_height(noise: FastNoiseLite, world_x: float, world_z: float, job: Dictionary) -> float:
+func _sample_height(noise: FastNoiseLite, biome_noise: FastNoiseLite, world_x: float, world_z: float, job: Dictionary) -> float:
 	var h := noise.get_noise_2d(world_x, world_z)
 	h = (h + 1.0) * 0.5
+	var b := biome_noise.get_noise_2d(world_x, world_z)
+	b = (b + 1.0) * 0.5
+	var threshold: float = job.get("biome_mountain_threshold", biome_mountain_threshold)
+	var tw: float = max(job.get("biome_transition_width", biome_transition_width), 0.01)
+	var t: float = smoothstep(threshold, threshold + tw, b)
+	var curve_exp: float = lerp(
+		job.get("biome_curve_flat", biome_curve_flat),
+		job.get("biome_curve_mountain", biome_curve_mountain),
+		t
+	)
+	h = pow(h, curve_exp)
 	var height_min_local: float = job.get("height_min", height_min)
 	var import_scale: float = float(job.get("height_max", height_max)) - height_min_local
 	return height_min_local + h * import_scale
 
-func _sample_normal(noise: FastNoiseLite, world_x: float, world_z: float, job: Dictionary) -> Vector3:
-	var base_height := _sample_height(noise, world_x, world_z, job)
-	var dx := _sample_height(noise, world_x + 1.0, world_z, job) - base_height
-	var dz := _sample_height(noise, world_x, world_z + 1.0, job) - base_height
+func _sample_normal(noise: FastNoiseLite, biome_noise: FastNoiseLite, world_x: float, world_z: float, job: Dictionary) -> Vector3:
+	var base_height := _sample_height(noise, biome_noise, world_x, world_z, job)
+	var dx := _sample_height(noise, biome_noise, world_x + 1.0, world_z, job) - base_height
+	var dz := _sample_height(noise, biome_noise, world_x, world_z + 1.0, job) - base_height
 	return Vector3(-dx, 1.0, -dz).normalized()
 
 func _apply_generation_result(result: Dictionary) -> void:
