@@ -6,8 +6,9 @@
 [ext_resource type="PackedScene" uid="uid://di5fovhcyd7re" path="res://scenes/components/Enemy.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://d2jihfohphuue" path="res://scenes/components/UI.tscn" id="5"]
 [ext_resource type="Script" uid="uid://brh8x1wnycrl5" path="res://scripts/terrain3d/RuntimeNavigationBaker.gd" id="6"]
-[ext_resource type="Script" uid="uid://cyubaxo7uvm6l" path="res://scripts/terrain3d/terrain_assets_getter.gd" id="7_jlsqs"]
+[ext_resource type="Script" uid="uid://cbh6hbad27pyd" path="res://scripts/terrain3d/mesh_placement_manager.gd" id="7"]
 [ext_resource type="Script" uid="uid://b6ohunvsaiuv8" path="res://scripts/terrain3d/generation_job.gd" id="8_jlsqs"]
+[ext_resource type="Terrain3DAssets" uid="uid://v1wij8s3yeu6" path="res://assets/terrain_3d_assets.tres" id="9_q8u5g"]
 
 [sub_resource type="Gradient" id="Gradient_jlsqs"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -65,28 +66,6 @@ world_background = 2
 auto_shader = true
 show_region_grid = true
 show_vertex_grid = true
-show_checkered = true
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lhr70"]
-transparency = 4
-cull_mode = 2
-vertex_color_use_as_albedo = true
-backlight_enabled = true
-backlight = Color(0.5, 0.5, 0.5, 1)
-distance_fade_mode = 1
-distance_fade_min_distance = 128.0
-distance_fade_max_distance = 96.0
-
-[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_wp0k4"]
-generated_type = 1
-height_offset = 0.5
-material_override = SubResource("StandardMaterial3D_lhr70")
-last_lod = 0
-last_shadow_lod = 0
-lod0_range = 128.0
-
-[sub_resource type="Terrain3DAssets" id="Terrain3DAssets_bjd11"]
-mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_wp0k4")])
 
 [node name="Main" type="Node" unique_id=487858458]
 script = ExtResource("1_c01mt")
@@ -105,8 +84,8 @@ target = NodePath("../Player")
 [node name="NavBaker" type="Node" parent="." unique_id=1110305237]
 script = ExtResource("6")
 
-[node name="TerrainAssetsGetter" type="Node" parent="." unique_id=1418671356]
-script = ExtResource("7_jlsqs")
+[node name="MeshPlacementManager" type="Node" parent="." unique_id=246979443]
+script = ExtResource("7")
 
 [node name="GenerationJob" type="Node" parent="." unique_id=1267096136]
 script = ExtResource("8_jlsqs")
@@ -114,10 +93,9 @@ script = ExtResource("8_jlsqs")
 [node name="Terrain3D" type="Terrain3D" parent="." unique_id=226140066]
 data_directory = "res://terrain_data"
 material = SubResource("Terrain3DMaterial_q8u5g")
-assets = SubResource("Terrain3DAssets_bjd11")
+assets = ExtResource("9_q8u5g")
 show_grid = true
 show_region_grid = true
 show_vertex_grid = true
-show_checkered = true
 top_level = true
 metadata/_edit_lock_ = true

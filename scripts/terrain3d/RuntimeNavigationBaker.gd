@@ -78,6 +78,8 @@ func set_template(p_value: NavigationMesh) -> void:
 
 
 func parse_scene() -> void:
+	if not template:
+		return
 	_scene_geometry = NavigationMeshSourceGeometryData3D.new()
 	NavigationServer3D.parse_source_geometry_data(template, _scene_geometry, self)
 
@@ -111,7 +113,8 @@ func _process(p_delta: float) -> void:
 
 
 func _rebake(p_center: Vector3) -> void:
-	assert(template != null)
+	if not template:
+		return
 	_bake_task_id = WorkerThreadPool.add_task(_task_bake.bind(p_center), false, "RuntimeNavigationBaker")
 	_bake_task_timer = 0.0
 	_bake_cooldown_timer = bake_cooldown

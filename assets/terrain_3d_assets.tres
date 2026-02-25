@@ -1,0 +1,11 @@
+[gd_resource type="Terrain3DAssets" format=3 uid="uid://v1wij8s3yeu6"]
+
+[ext_resource type="Terrain3DMeshAsset" uid="uid://cbungewcdrvxm" path="res://assets/mesh_assets/grass_mesh.tres" id="1_wiou6"]
+[ext_resource type="Terrain3DMeshAsset" uid="uid://u350oxwrmnxg" path="res://assets/mesh_assets/tree_mesh_asset.tres" id="2_wiou6"]
+[ext_resource type="Terrain3DMeshAsset" uid="uid://dndh34arlki75" path="res://assets/mesh_assets/test_mesh_asset.tres" id="3_wiou6"]
+[ext_resource type="Terrain3DTextureAsset" uid="uid://cww7wtr0l5d30" path="res://assets/stone_texture.tres" id="4_a18qc"]
+[ext_resource type="Terrain3DTextureAsset" uid="uid://dstwyix1d2v1" path="res://assets/grass_texture.tres" id="5_h7rl8"]
+
+[resource]
+mesh_list = Array[Terrain3DMeshAsset]([ExtResource("1_wiou6"), ExtResource("2_wiou6"), ExtResource("3_wiou6")])
+texture_list = Array[Terrain3DTextureAsset]([ExtResource("4_a18qc"), ExtResource("5_h7rl8")])

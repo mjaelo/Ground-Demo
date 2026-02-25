@@ -1,0 +1,25 @@
+﻿{
+  "layers": [
+    {
+      "mesh_id": 0,
+      "density": 0.25,
+      "max_slope": 18.0,
+      "min_height": -1000000.0,
+      "max_height": 1000000.0
+    },
+    {
+      "mesh_id": 1,
+      "density": 0.0001,
+      "max_slope": 15.0,
+      "min_height": -1000000.0,
+      "max_height": 1000000.0
+    },
+    {
+      "mesh_id": 2,
+      "density": 0.02,
+      "max_slope": 18.0,
+      "min_height": -1000000.0,
+      "max_height": 1000000.0
+    }
+  ]
+}

@@ -22,10 +22,14 @@ func _ready() -> void:
 	$Player.collision_enabled = false
 	if $Terrain3D and $Terrain3D.data:
 		$GenerationJob._initial_player_region = $Terrain3D.data.get_region_location($Player.global_transform.origin)
-	
 	$Terrain3D.collision.mode = Terrain3DCollision.DYNAMIC_EDITOR
-	$Terrain3D.assets = $TerrainAssetsGetter.get_terrain_assets()
 
+	# Wait one frame to ensure MeshPlacementManager is ready
+	await get_tree().process_frame
+	
+	# Set the mesh placement manager reference for generation job (needed for threaded generation)
+	$GenerationJob.mesh_placement_manager = $MeshPlacementManager
+	
 	start_missing_generation_threads()
 
 	$NavBaker.terrain = $Terrain3D
@@ -98,6 +102,7 @@ func update_thread_results() -> void:
 			_loading_regions.erase(loc)
 
 func _remove_region(terrain: Terrain3D, loc: Vector2i) -> void:
+	$MeshPlacementManager.clear_scene_meshes(loc)
 	for region in terrain.data.get_regions_active():
 		var region_loc: Vector2i = _get_region_location(region)
 		if region_loc == loc:

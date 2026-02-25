@@ -1,0 +1,12 @@
+[gd_resource type="Terrain3DMeshAsset" format=3 uid="uid://u350oxwrmnxg"]
+
+[ext_resource type="PackedScene" uid="uid://bcn3fu18834y2" path="res://assets/mesh_assets/tree.tscn" id="1_drx0c"]
+
+[resource]
+name = "Tree"
+id = 1
+scene_file = ExtResource("1_drx0c")
+height_offset = 0.5
+last_lod = 1
+last_shadow_lod = 1
+lod1_range = 128.0
