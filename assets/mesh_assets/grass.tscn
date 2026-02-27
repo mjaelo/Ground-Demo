@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://cr7ptwch88cmr"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rwrho"]
+albedo_color = Color(0.24465099, 0.5036821, 0.23986506, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_7vse6"]
+material = SubResource("StandardMaterial3D_rwrho")
+top_radius = 0.0
+height = 1.0
+
+[node name="Grass" type="Node3D" unique_id=1147302700]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=134754989]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("CylinderMesh_7vse6")
