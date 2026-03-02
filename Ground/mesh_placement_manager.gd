@@ -1,8 +1,7 @@
 extends Node
 class_name MeshPlacementManager
+# TODO house scenes are not rotated
 
-# How far to scatter grass/foliage; 0 uses the full terrain size.
-@export var foliage_extent: int = 0
 # Distance between placed foliage instances; lower = denser.
 @export var foliage_step: int = 2
 @export var empty_chance: float = 0.3 # Probability (0-1) that a coordinate is left empty (no asset placed)
@@ -73,7 +72,6 @@ func _load_placement_rules() -> void:
 
 # Returns a Dictionary of asset_name (String) -> Array[Transform3D].
 func generate_transforms(region_origin_m: Vector3, region_size: int, height_sampler: Callable, normal_sampler: Callable) -> Dictionary:
-	var width: int = foliage_extent if foliage_extent > 0 else int(region_size)
 	var step: int = max(1, int(foliage_step))
 	var origin: Vector3 = region_origin_m + Vector3(-region_size * 0.5, 0, -region_size * 0.5)
 	var rng := RandomNumberGenerator.new()
@@ -98,8 +96,8 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 
 	# Pass 1: large-footprint assets only.
 	if not large_layers.is_empty():
-		for x in range(0, width, step):
-			for z in range(0, width, step):
+		for x in range(0, region_size, step):
+			for z in range(0, region_size, step):
 				var gx: int = x / step
 				var gz: int = z / step
 				if blocked.has(Vector2i(gx, gz)):
@@ -112,8 +110,8 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 
 	# Pass 2: small assets, skipping coords blocked by large assets.
 	if not small_layers.is_empty():
-		for x in range(0, width, step):
-			for z in range(0, width, step):
+		for x in range(0, region_size, step):
+			for z in range(0, region_size, step):
 				var gx: int = x / step
 				var gz: int = z / step
 				if blocked.has(Vector2i(gx, gz)):

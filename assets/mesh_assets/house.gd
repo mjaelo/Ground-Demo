@@ -1,5 +1,6 @@
 @tool
 extends StaticBody3D
+# TODO logic simplification and error proofing
 
 enum HouseType {
 	COTTAGE   = 0,  ## simple single-storey cottage
@@ -171,9 +172,6 @@ func _build_house() -> void:
 			if min_y == 0.0 or y < min_y:
 				min_y = y
 	self.position.y -= min_y
-
-	print("[House] Built type=", HouseType.keys()[house_type], "  children=", get_child_count())
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # BUILDING BLOCKS

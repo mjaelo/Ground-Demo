@@ -27,10 +27,13 @@ func _ready() -> void:
 		$GenerationJob._initial_player_region = $Terrain3D.data.get_region_location($Player.global_transform.origin)
 	$Terrain3D.collision.mode = Terrain3DCollision.DYNAMIC_EDITOR
 
-	# Wait one frame to ensure MeshPlacementManager is ready
+	# Wait one frame to ensure child nodes are ready
 	await get_tree().process_frame
-	
-	# Load assets from disk, register with Terrain3D, and load placement rules.
+
+	# Load ground textures from assets/textures/ and register with Terrain3D.
+	$TerrainTextureManager.initialize($Terrain3D)
+
+	# Load mesh assets from disk, register with Terrain3D, and load placement rules.
 	$MeshPlacementManager.initialize($Terrain3D)
 
 	# Set the mesh placement manager reference for generation job (needed for threaded generation)

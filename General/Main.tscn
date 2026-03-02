@@ -8,7 +8,8 @@
 [ext_resource type="Script" uid="uid://brh8x1wnycrl5" path="res://Ground/RuntimeNavigationBaker.gd" id="6"]
 [ext_resource type="Script" uid="uid://cbh6hbad27pyd" path="res://Ground/mesh_placement_manager.gd" id="7"]
 [ext_resource type="Script" uid="uid://b6ohunvsaiuv8" path="res://Ground/generation_job.gd" id="8_jlsqs"]
-[ext_resource type="Terrain3DAssets" uid="uid://v1wij8s3yeu6" path="res://assets/terrain_3d_assets.tres" id="9_q8u5g"]
+[ext_resource type="Terrain3DAssets" uid="uid://d023f567p32oh" path="res://assets/new_terrain_3d_assets.tres" id="10_42oyt"]
+[ext_resource type="Script" uid="uid://drpryiin86bg5" path="res://Ground/terrain_texture_manager.gd" id="12_ttm"]
 
 [sub_resource type="NavigationMesh" id="NavigationMesh_navbk"]
 agent_height = 2.0
@@ -94,13 +95,16 @@ log_timing = true
 [node name="MeshPlacementManager" type="Node" parent="." unique_id=246979443]
 script = ExtResource("7")
 
+[node name="TerrainTextureManager" type="Node" parent="." unique_id=715953721]
+script = ExtResource("12_ttm")
+
 [node name="GenerationJob" type="Node" parent="." unique_id=1267096136]
 script = ExtResource("8_jlsqs")
 
 [node name="Terrain3D" type="Terrain3D" parent="." unique_id=226140066]
 data_directory = "res://Ground/terrain_data"
 material = SubResource("Terrain3DMaterial_q8u5g")
-assets = ExtResource("9_q8u5g")
+assets = ExtResource("10_42oyt")
 show_grid = true
 show_region_grid = true
 show_vertex_grid = true
