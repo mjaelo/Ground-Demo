@@ -142,9 +142,6 @@ func _task_bake(p_center: Vector3) -> void:
 
 
 func _bake_finished(p_nav_mesh: NavigationMesh) -> void:
-	if log_timing:
-		print("Navigation bake took ", _bake_task_timer, "s")
-	
 	_bake_task_timer = 0.0
 	_bake_task_id = -1
 	

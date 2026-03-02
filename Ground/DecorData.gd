@@ -1,5 +1,6 @@
 extends Resource
-class_name DecorData
+class_name DecorData 
+# TODO should it be DecorInfo instead, as it holds info about decor types and not about a specific decor?
 
 ## Human-readable label matching the Terrain3DMeshAsset name or scene file stem.
 @export var asset_name: String = ""

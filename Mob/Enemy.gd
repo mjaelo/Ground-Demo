@@ -36,27 +36,39 @@ func is_on_nav_mesh() -> bool:
 func _physics_process(p_delta: float) -> void:
 	if not _navigation_ready:
 		return
-	if nav_agent.is_navigation_finished():
+
+	# Snap to terrain surface so the enemy doesn't float.
+	var terrain_node: Node = get_node_or_null("../Terrain3D")
+	if terrain_node and terrain_node.data:
+		var h: float = terrain_node.data.get_height(global_position)
+		if not is_nan(h):
+			global_position.y = maxf(global_position.y, h)
+
+	if nav_agent.is_navigation_finished() or not target:
 		velocity.x = 0.0
 		velocity.z = 0.0
 	else:
 		var next_path_position: Vector3 = nav_agent.get_next_path_position()
 		var current_agent_position: Vector3 = global_position
-		var velocity_xz := (next_path_position - current_agent_position).normalized() * MOVE_SPEED
-		velocity.x = velocity_xz.x
-		velocity.z = velocity_xz.z
+		var dir: Vector3
 
-	velocity.y -= 40 * p_delta
+		# Fallback: if nav path gives same position (no nav mesh), chase directly.
+		if next_path_position.distance_squared_to(current_agent_position) < 0.01:
+			dir = (target.global_position - current_agent_position)
+			dir.y = 0.0
+			dir = dir.normalized()
+		else:
+			dir = (next_path_position - current_agent_position).normalized()
+
+		velocity.x = dir.x * MOVE_SPEED
+		velocity.z = dir.z * MOVE_SPEED
+
+	velocity.y -= 40.0 * p_delta
 
 	if nav_agent.avoidance_enabled:
 		nav_agent.set_velocity(velocity)
 	else:
 		_on_velocity_computed(velocity)
-
-	# Ensure enemy doesn't fall through terrain when collision absent
-	var height: float = $"../Terrain3D".data.get_height(global_position)
-	if not is_nan(height):
-		global_position.y = maxf(global_position.y, height)
 
 
 func _on_velocity_computed(p_safe_velocity: Vector3) -> void:

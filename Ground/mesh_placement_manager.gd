@@ -9,7 +9,7 @@ class_name MeshPlacementManager
 
 const MESH_ASSETS_PATH: String = "res://assets/mesh_assets/"
 # Per-mesh placement controls loaded from JSON file.
-@export_file("*.json") var placement_rules_file: String = MESH_ASSETS_PATH + "placement_rules.json"
+@export_file("*.json") var placement_rules_file: String = MESH_ASSETS_PATH + "decor_placement_rules.json"
 
 # asset_name (lowercase) -> PackedScene
 var _scene_assets: Dictionary = {}
@@ -153,11 +153,14 @@ func _pick_and_place(transforms_by_name: Dictionary, pos_x: float, pos_z: float,
 	if candidates.is_empty():
 		return
 	var roll: float = rng.randf() * total_weight
+	# Pick a random Y rotation: 0, 90, 180, or 270 degrees
+	var rot_index: int = rng.randi() % 4
+	var rot_y: float = rot_index * PI * 0.5
 	for i in candidates.size():
 		if roll <= weights[i]:
-			_place_instance(candidates[i], transforms_by_name, pos_x, pos_z, blocked, gx, gz, step, height_sampler)
+			_place_instance(candidates[i], transforms_by_name, pos_x, pos_z, blocked, gx, gz, step, height_sampler, rot_y)
 			return
-	_place_instance(candidates[-1], transforms_by_name, pos_x, pos_z, blocked, gx, gz, step, height_sampler)
+	_place_instance(candidates[-1], transforms_by_name, pos_x, pos_z, blocked, gx, gz, step, height_sampler, rot_y)
 
 ## Check slope at the center and, for meshes with a footprint, at the perimeter too.
 func _check_slope_footprint(decor: DecorData, cx: float, cz: float, center_slope: float, normal_sampler: Callable) -> bool:
@@ -181,7 +184,7 @@ func _check_slope_footprint(decor: DecorData, cx: float, cz: float, center_slope
 
 ## Place the mesh at the highest ground point within its footprint so Y=0 vertices
 ## are never above ground.
-func _place_instance(decor: DecorData, transforms_by_name: Dictionary, pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, height_sampler: Callable) -> void:
+func _place_instance(decor: DecorData, transforms_by_name: Dictionary, pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, height_sampler: Callable, rot_y: float = 0.0) -> void:
 	var key: String = decor.asset_name.to_lower()
 	var best_h: float = height_sampler.call(pos_x, pos_z)
 
@@ -203,7 +206,9 @@ func _place_instance(decor: DecorData, transforms_by_name: Dictionary, pos_x: fl
 
 	if not transforms_by_name.has(key):
 		transforms_by_name[key] = []
-	(transforms_by_name[key] as Array).push_back(Transform3D(Basis(), Vector3(pos_x, best_h, pos_z)))
+	# Build a transform with Y rotation applied
+	var rot_basis := Basis(Vector3.UP, rot_y)
+	(transforms_by_name[key] as Array).push_back(Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z)))
 
 	# Block grid coords covered by this asset's mesh_size.
 	if ms.x > 0 or ms.y > 0:
@@ -237,10 +242,13 @@ func spawn_meshes(asset_name: String, transforms: Array, parent: Node, loc: Vect
 	var nodes: Array = _scene_nodes.get(slot_key, [])
 	for t in transforms:
 		var node: Node3D = scene.instantiate()
-		node.global_transform = t
+		# Set local transform before add_child so _ready() sees the correct position.
+		# global_transform is unreliable before the node enters the tree; since parent
+		# is a plain Node (no 3-D offset) local == global, so this is equivalent.
+		node.transform = t
+		parent.add_child(node)
 		if vis_range > 0.0:
 			_apply_visibility_range_recursive(node, vis_range)
-		parent.add_child(node)
 		nodes.append(node)
 	_scene_nodes[slot_key] = nodes
 

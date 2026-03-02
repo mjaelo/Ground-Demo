@@ -32,6 +32,3 @@ surface_material_override/0 = SubResource("StandardMaterial3D_d4cor")
 [node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
 path_desired_distance = 2.0
 
-[node name="OnScreenEnabler" type="VisibleOnScreenEnabler3D" parent="." unique_id=1297757668]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0165582, 0)
-aabb = AABB(-0.5, -1, -0.5, 1, 2, 1)

@@ -10,6 +10,10 @@
 [ext_resource type="Script" uid="uid://b6ohunvsaiuv8" path="res://Ground/generation_job.gd" id="8_jlsqs"]
 [ext_resource type="Terrain3DAssets" uid="uid://v1wij8s3yeu6" path="res://assets/terrain_3d_assets.tres" id="9_q8u5g"]
 
+[sub_resource type="NavigationMesh" id="NavigationMesh_navbk"]
+agent_height = 2.0
+agent_max_climb = 0.5
+
 [sub_resource type="Gradient" id="Gradient_jlsqs"]
 offsets = PackedFloat32Array(0.2, 1)
 colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
@@ -30,14 +34,6 @@ domain_warp_fractal_gain = 1.0
 noise = SubResource("FastNoiseLite_q8u5g")
 color_ramp = SubResource("Gradient_jlsqs")
 seamless = true
-
-[sub_resource type="NavigationMesh" id="NavigationMesh_navbk"]
-cell_size = 1.0
-cell_height = 0.5
-agent_height = 2.0
-agent_radius = 0.5
-agent_max_climb = 1.0
-agent_max_slope = 45.0
 
 [sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_q8u5g"]
 _shader_parameters = {

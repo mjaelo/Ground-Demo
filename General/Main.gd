@@ -17,7 +17,7 @@ var thread_results: Array = []
 
 func _ready() -> void:
 	$UI.player = $Player
-	NavigationServer3D.set_debug_enabled(false)
+	NavigationServer3D.set_debug_enabled(true)
 	$Player.gravity_enabled = false
 	$Player.collision_enabled = false
 	# Disable enemy movement until terrain + nav mesh are ready
@@ -48,7 +48,6 @@ func _ready() -> void:
 	$NavBaker.bake_finished.connect(_on_nav_bake_finished)
 
 var _player_spawn_done: bool = false
-var _first_nav_bake_done: bool = false
 var _enemy_activated: bool = false
 var _cached_terrain: Terrain3D = null
 
@@ -58,18 +57,19 @@ func _on_player_spawned(terrain: Terrain3D) -> void:
 	_try_activate_enemy()
 
 func _on_nav_bake_finished() -> void:
-	if not _first_nav_bake_done:
-		_first_nav_bake_done = true
-		_try_activate_enemy()
+	# Nav mesh is now available — enable navigation pathfinding on the enemy if
+	# it is already active, otherwise activation happens in _try_activate_enemy.
+	if _enemy_activated:
+		$Enemy.enable_navigation()
 
 func _try_activate_enemy() -> void:
 	if _enemy_activated:
 		return
-	if not _player_spawn_done or not _first_nav_bake_done:
+	if not _player_spawn_done:
 		return
 	_enemy_activated = true
 
-	# Place the enemy near the player on the terrain surface
+	# Place the enemy near the player on the terrain surface.
 	var terrain: Terrain3D = _cached_terrain
 	var player_pos: Vector3 = $Player.global_transform.origin
 	var offset := Vector3(30, 0, 30)
@@ -80,9 +80,12 @@ func _try_activate_enemy() -> void:
 	$Enemy.global_transform.origin = Vector3(enemy_xz.x, h + 1.0, enemy_xz.z)
 	$Enemy.set_process(true)
 	$Enemy.set_physics_process(true)
-	# Nav mesh is ready — allow the enemy to start pathfinding immediately
+	# Enable navigation immediately — the enemy has a fallback direct-chase
+	# if no nav mesh is available yet.
 	$Enemy.enable_navigation()
-	print("Enemy activated at: ", $Enemy.global_transform.origin)
+	# Force the nav baker to re-bake now that terrain data is loaded.
+	# Resetting _current_center to INF guarantees the distance check passes next frame.
+	$NavBaker._current_center = Vector3(INF, INF, INF)
 
 func _process(delta: float) -> void:
 	_stream_timer += delta

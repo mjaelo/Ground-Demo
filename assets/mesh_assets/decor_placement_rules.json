@@ -25,9 +25,9 @@
     {
       "name": "House",
       "weight": 10,
-      "spawn_chance": 0.0001,
-      "max_slope": 5.0,
-      "mesh_size": [20, 20],
+      "spawn_chance": 0.003,
+      "max_slope": 15.0,
+      "mesh_size": [50, 50],
       "visibility_range": 400.0
     }
   ]
