@@ -2,23 +2,11 @@ extends Node
 
 signal player_spawned
 
-# Noise frequency that shapes the terrain slopes/hills.
+# ── Terrain noise ──────────────────────────────────────────────────────
 @export var noise_frequency: float = 0.0009
-# Biome noise — very low frequency so biomes are much larger than regions.
-# Lower = bigger biomes, higher = smaller biomes.
-@export var biome_noise_frequency: float = 0.00015
-# Mountains only appear where biome noise exceeds this threshold (0-1).
-# 0.75 = top 25% of the world is mountains. Higher = rarer mountains.
-@export var biome_mountain_threshold: float = 0.9
-# How wide the flat->mountain transition band is (0-1 of noise range after threshold).
-# Smaller = sharper edge, larger = wider gradual transition.
-@export var biome_transition_width: float = 0.2
-# How much the biome noise shapes the terrain.
-# biome_curve_flat: exponent in flat biomes — higher = flatter/lower ground (e.g. 4.0).
-# biome_curve_mountain: exponent in mountain biomes — lower = taller sharper peaks (e.g. 0.4).
-@export var biome_curve_flat: float = 4.0
-@export var biome_curve_mountain: float = 0.4
-# Lowest and highest terrain elevation (meters) used when importing the heightmap.
+
+
+# ── Height range ──────────────────────────────────────────────────────
 @export var height_min: float = 0.0
 @export var height_max: float = 800.0
 
@@ -26,42 +14,43 @@ var _player_spawn_complete := false
 
 var _initial_player_region: Vector2i = Vector2i.ZERO
 var noise := FastNoiseLite.new()
-var biome_noise := FastNoiseLite.new()
+var biome_manager := BiomeManager.new()
 @onready var heightmap_resolution: int = $"../Terrain3D".region_size
 var mesh_placement_manager: MeshPlacementManager = null
 
 
 func _ready() -> void:
 	noise.frequency = noise_frequency
-	biome_noise.seed = 12345
-	biome_noise.frequency = biome_noise_frequency
 
-func _generate_region_job(loc: Vector2i,region_size:int) -> Dictionary:
+func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 	var region_origin_m := Vector3(loc.x * region_size, 0, loc.y * region_size)
-	# Resolution of the generated heightmap image; higher = smoother but slower.
-	var img: Image = Image.create_empty(heightmap_resolution, heightmap_resolution, false, Image.FORMAT_RF)
-	for x in img.get_width():
-		for y in img.get_height():
-			var nx := (x / float(heightmap_resolution)) * region_size + loc.x * region_size
-			var ny := (y / float(heightmap_resolution)) * region_size + loc.y * region_size
+	var res: int = heightmap_resolution
+	var img: Image = Image.create_empty(res, res, false, Image.FORMAT_RF)
+	var ctrl: Image = Image.create_empty(res, res, false, Image.FORMAT_RF)
+	var import_scale: float = height_max - height_min
+
+	# First pass: generate heights — store actual world heights directly
+	for x in res:
+		for y in res:
+			var nx := (x / float(res)) * region_size + loc.x * region_size
+			var ny := (y / float(res)) * region_size + loc.y * region_size
 			var h := noise.get_noise_2d(nx, ny)
 			h = (h + 1.0) * 0.5
-			# Biome noise: very low frequency, smoothly controls terrain shape per world pos
-			var b := biome_noise.get_noise_2d(nx, ny)
-			b = (b + 1.0) * 0.5
-			# Use smoothstep over transition_width after threshold so mountains are rare and edges smooth
-			var threshold: float = biome_mountain_threshold
-			var tw: float = max(biome_transition_width, 0.01)
-			var t: float = smoothstep(threshold, threshold + tw, b)
-			# t=0 -> flat biome, t=1 -> mountain biome
-			var curve_exp: float = lerp(
-				biome_curve_flat,
-				biome_curve_mountain,
-				t
-			)
+			var curve_exp: float = biome_manager.get_height_curve(nx, ny)
 			h = pow(h, curve_exp)
-			img.set_pixel(x, y, Color(h, 0., 0., 1.))
-	
+			var world_h: float = height_min + h * import_scale
+			img.set_pixel(x, y, Color(world_h, 0., 0., 1.))
+
+	# Second pass: build control map (needs height neighbours for slope)
+	for x in res:
+		for y in res:
+			var nx := (x / float(res)) * region_size + loc.x * region_size
+			var ny := (y / float(res)) * region_size + loc.y * region_size
+			# Approximate slope from height image neighbours (heights are already world-scale)
+			var slope_deg: float = _slope_deg_from_image(img, x, y, region_size, res, 1.0)
+			var encoded: float = biome_manager.get_encoded_control(nx, ny, slope_deg)
+			ctrl.set_pixel(x, y, Color(encoded, 0., 0., 1.))
+
 	# Generate mesh placements
 	var transforms_by_mesh: Dictionary = {}
 	if mesh_placement_manager and mesh_placement_manager.has_method("generate_transforms"):
@@ -71,31 +60,41 @@ func _generate_region_job(loc: Vector2i,region_size:int) -> Dictionary:
 			_sample_height,
 			_sample_normal
 		)
-	
+
 	return {
 		"loc": loc,
 		"region_origin": region_origin_m,
 		"image": img,
+		"control_image": ctrl,
 		"transforms_by_mesh": transforms_by_mesh,
 	}
+
+## Estimate slope in degrees from the heightmap image at pixel (px, py).
+func _slope_deg_from_image(img: Image, px: int, py: int, region_size: int, res: int, import_scale: float) -> float:
+	var h_c: float = img.get_pixel(px, py).r * import_scale
+	var h_r: float
+	var h_d: float
+	if px + 1 < res:
+		h_r = img.get_pixel(px + 1, py).r * import_scale
+	else:
+		h_r = h_c
+	if py + 1 < res:
+		h_d = img.get_pixel(px, py + 1).r * import_scale
+	else:
+		h_d = h_c
+	var cell_size: float = float(region_size) / float(res)
+	var dx: float = (h_r - h_c) / cell_size
+	var dz: float = (h_d - h_c) / cell_size
+	var n := Vector3(-dx, 1.0, -dz).normalized()
+	return rad_to_deg(acos(clamp(n.dot(Vector3.UP), -1.0, 1.0)))
 
 func _sample_height(world_x: float, world_z: float) -> float:
 	var h := noise.get_noise_2d(world_x, world_z)
 	h = (h + 1.0) * 0.5
-	var b := biome_noise.get_noise_2d(world_x, world_z)
-	b = (b + 1.0) * 0.5
-	var threshold: float = biome_mountain_threshold
-	var tw: float = max(biome_transition_width, 0.01)
-	var t: float = smoothstep(threshold, threshold + tw, b)
-	var curve_exp: float = lerp(
-		biome_curve_flat,
-		biome_curve_mountain,
-		t
-	)
+	var curve_exp: float = biome_manager.get_height_curve(world_x, world_z)
 	h = pow(h, curve_exp)
-	var height_min_local: float = height_min
-	var import_scale: float = height_max - height_min_local
-	return height_min_local + h * import_scale
+	var import_scale: float = height_max - height_min
+	return height_min + h * import_scale
 
 func _sample_normal(world_x: float, world_z: float) -> Vector3:
 	var base_height := _sample_height(world_x, world_z)
@@ -113,9 +112,13 @@ func _apply_generation_result_defered(result: Dictionary) -> void:
 	var imported_images: Array[Image]
 	imported_images.resize(Terrain3DRegion.TYPE_MAX)
 	imported_images[Terrain3DRegion.TYPE_HEIGHT] = result.get("image", null)
+	# Import the control map so Terrain3D uses our per-pixel texture assignments.
+	imported_images[Terrain3DRegion.TYPE_CONTROL] = result.get("control_image", null)
 	var region_origin_m: Vector3 = result.get("region_origin", Vector3.ZERO)
 	if imported_images[Terrain3DRegion.TYPE_HEIGHT] != null:
-		terrain.data.import_images.call_deferred(imported_images, region_origin_m, height_min, height_max - height_min)
+		# Heights are pre-baked to world scale, so offset=0 scale=1.
+		# This is critical: import_scale != 1 could corrupt control map bit patterns.
+		terrain.data.import_images.call_deferred(imported_images, region_origin_m, 0.0, 1.0)
 		terrain.data.calc_height_range.call_deferred(true)
 	var transforms_by_name: Dictionary = result.get("transforms_by_mesh", {})
 	var loc: Vector2i = result.get("loc", Vector2i.ZERO)

@@ -1,7 +1,7 @@
 extends Node
 
 # Number of chunks to keep loaded around the player (1 = 3x3 grid, 2 = 5x5, 3 = 7x7, etc).
-@export var stream_radius_chunks: int = 2
+@export var stream_radius_chunks: int = 15
 
 # How often (seconds) to check for streaming updates.
 @export var stream_check_interval: float = 2
@@ -13,7 +13,12 @@ var _loading_regions: Dictionary = {}
 var _generation_threads: Dictionary = {}
 var thread_results: Array = []
 
-@export var max_region_distance: int = 6
+## Max region generation threads running at the same time.
+@export var max_concurrent_threads: int = 2
+## Max results to apply per frame to avoid overwhelming the GPU/Terrain3D.
+@export var max_results_per_frame: int = 1
+
+@export var max_region_distance: int = 15
 
 func _ready() -> void:
 	$UI.player = $Player
@@ -91,43 +96,89 @@ func _try_activate_enemy() -> void:
 	$NavBaker._current_center = Vector3(INF, INF, INF)
 
 func _process(delta: float) -> void:
+	# Always collect finished thread results.
+	update_thread_results()
+
+	# Get player region for priority sorting and distance checks.
+	var p_terrain: Terrain3D = $Terrain3D
+	var p_player_region := Vector2i.ZERO
+	var has_terrain: bool = p_terrain != null and p_terrain.data != null
+	if has_terrain:
+		p_player_region = p_terrain.data.get_region_location($Player.global_transform.origin)
+
+	# Apply queued results every frame, but limit how many per frame.
+	# Prioritize results closest to the player.
+	if has_terrain and thread_results.size() > 1:
+		thread_results.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var la: Vector2i = a.get("loc", Vector2i.ZERO)
+			var lb: Vector2i = b.get("loc", Vector2i.ZERO)
+			return la.distance_to(p_player_region) < lb.distance_to(p_player_region)
+		)
+
+	var applied := 0
+	while thread_results.size() > 0 and applied < max_results_per_frame:
+		var result: Dictionary = thread_results.pop_front()
+		# Discard results for regions that are now too far from the player.
+		var loc: Vector2i = result.get("loc", Vector2i.ZERO)
+		if has_terrain and loc.distance_to(p_player_region) > max_region_distance:
+			_loading_regions.erase(loc)
+			continue
+		$GenerationJob._apply_generation_result(result)
+		applied += 1
+
+	# Periodically check if we need to generate new regions.
 	_stream_timer += delta
 	if _stream_timer >= stream_check_interval:
 		_stream_timer = 0.0
 		start_missing_generation_threads()
-	
-		# apply generation results on the main thread
-		if thread_results.size() > 0:
-			var result: Dictionary = thread_results.pop_front()
-			$GenerationJob._apply_generation_result(result)
 
-	update_thread_results()
 
 func start_missing_generation_threads() -> void:
-	if _generation_threads.size():
-		return # Already generating regions, wait for next check.
 	var terrain: Terrain3D = $Terrain3D
 	if not terrain or not terrain.data:
 		return
 	var player_pos: Vector3 = $Player.global_transform.origin
 	var player_region: Vector2i = terrain.data.get_region_location(player_pos)
-	var needed_loc: Array[Vector2i]
+
+	# Collect all needed locations, sorted by distance to player.
+	var needed_loc: Array[Vector2i] = []
 	for x in range(player_region.x - stream_radius_chunks, player_region.x + stream_radius_chunks + 1):
 		for y in range(player_region.y - stream_radius_chunks, player_region.y + stream_radius_chunks + 1):
-			needed_loc.push_back(Vector2i(x, y))
+			var loc := Vector2i(x, y)
+			if not _loaded_regions.has(loc) and not _loading_regions.has(loc):
+				needed_loc.push_back(loc)
 
-	# Sort needed_loc by distance to player_region
 	needed_loc.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 		return a.distance_to(player_region) < b.distance_to(player_region)
 	)
 
-	# Add missing regions
+	# Check if there are close regions still needed (within 2 chunks of player).
+	# If so, reserve all thread slots for close work — don't start far threads.
+	var close_needed: Array[Vector2i] = []
+	var far_needed: Array[Vector2i] = []
 	for loc in needed_loc:
-		if _loaded_regions.has(loc) or _loading_regions.has(loc):
-			continue
-		_start_region_generation(loc)
+		if loc.distance_to(player_region) <= 2.0:
+			close_needed.push_back(loc)
+		else:
+			far_needed.push_back(loc)
 
-	# Remove distant regions only if further than max_region_distance
+	# Prioritize close regions: fill all slots with close work first.
+	var slots_available: int = max_concurrent_threads - _generation_threads.size()
+	for loc in close_needed:
+		if slots_available <= 0:
+			break
+		_start_region_generation(loc)
+		slots_available -= 1
+
+	# Only start far regions if no close ones are pending.
+	if close_needed.size() == 0:
+		for loc in far_needed:
+			if slots_available <= 0:
+				break
+			_start_region_generation(loc)
+			slots_available -= 1
+
+	# Remove distant regions.
 	for loc in _loaded_regions.keys():
 		if loc.distance_to(player_region) > max_region_distance:
 			_remove_region(terrain, loc)
@@ -144,16 +195,26 @@ func _start_region_generation(loc: Vector2i) -> void:
 		push_error("Failed to start region generation thread: %s" % err)
 
 func update_thread_results() -> void:
+	var terrain: Terrain3D = $Terrain3D
+	var player_region := Vector2i.ZERO
+	var has_terrain: bool = terrain != null and terrain.data != null
+	if has_terrain:
+		player_region = terrain.data.get_region_location($Player.global_transform.origin)
+
 	for loc in _generation_threads.keys():
 		var thread: Thread = _generation_threads[loc]
 		if thread.is_alive():
 			continue
 		var result = thread.wait_to_finish()
 		_generation_threads.erase(loc)
-		if typeof(result) == TYPE_DICTIONARY:
-			thread_results.push_back(result)
-		else:
+		if typeof(result) != TYPE_DICTIONARY:
 			_loading_regions.erase(loc)
+			continue
+		# Discard if the region is now too far from the player.
+		if has_terrain and loc.distance_to(player_region) > max_region_distance:
+			_loading_regions.erase(loc)
+			continue
+		thread_results.push_back(result)
 
 func _remove_region(terrain: Terrain3D, loc: Vector2i) -> void:
 	$MeshPlacementManager.clear_scene_meshes(loc)

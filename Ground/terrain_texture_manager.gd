@@ -1,9 +1,10 @@
-﻿extends Node
+extends Node
 class_name TerrainTextureManager
 
 const TEXTURE_PATHS := [
 	{"name": "Rock", "id": 0, "path": "res://assets/textures/rock_tex.png"},
-	{"name": "Grass", "id": 1, "path": "res://assets/textures/grass_tex.png"}
+	{"name": "Grass", "id": 1, "path": "res://assets/textures/grass_tex.png"},
+	{"name": "Mud", "id": 2, "path": "res://assets/textures/mud_tex.png"} # Added mud texture
 ]
 
 var loaded_textures: Dictionary = {}
