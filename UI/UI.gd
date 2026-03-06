@@ -11,7 +11,13 @@ func _process(_delta) -> void:
 	$Label.text = "FPS: %d\n" % Engine.get_frames_per_second()
 	if(visible_mode == 1):
 		$Label.text += "Move Speed: %.1f\n" % player.MOVE_SPEED if player else ""
-		$Label.text += "Position: %.1v\n" % player.global_position if player else ""
+		# Show true world position (local pos + cumulative world shift offset).
+		if player:
+			var main_node: Node = get_parent()
+			var offset: Vector3 = main_node.get("world_offset") if main_node.get("world_offset") != null else Vector3.ZERO
+			var true_pos: Vector3 = player.global_position + offset
+			$Label.text += "Position: %.1v\n" % true_pos
+			$Label.text += "Local Pos: %.1v\n" % player.global_position
 		$Label.text += """
 			Player
 			Move: WASDEQ,Space,Mouse

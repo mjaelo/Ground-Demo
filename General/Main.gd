@@ -20,6 +20,21 @@ var thread_results: Array = []
 
 @export var max_region_distance: int = 15
 
+# ── World shifting ─────────────────────────────────────────────────────
+## Cumulative offset applied to keep coordinates within Terrain3D limits.
+## True world position = local position + world_offset.
+var world_offset := Vector3.ZERO
+
+## The Terrain3D coordinate limit (±4096 by default). We shift when the
+## player reaches half this distance from the terrain-local origin.
+@export var terrain_coord_limit: float = 4096.0
+
+## We trigger a shift when the player's terrain-local XZ distance from
+## the origin exceeds this fraction of the coordinate limit.
+@export var shift_threshold_fraction: float = 0.5
+
+var _shifting := false
+
 func _ready() -> void:
 	$UI.player = $Player
 	NavigationServer3D.set_debug_enabled(true)
@@ -43,6 +58,7 @@ func _ready() -> void:
 
 	# Set the mesh placement manager reference for generation job (needed for threaded generation)
 	$GenerationJob.mesh_placement_manager = $MeshPlacementManager
+	$GenerationJob.world_offset = world_offset
 	
 	start_missing_generation_threads()
 
@@ -96,6 +112,12 @@ func _try_activate_enemy() -> void:
 	$NavBaker._current_center = Vector3(INF, INF, INF)
 
 func _process(delta: float) -> void:
+	# Check if we need to shift the world back to origin.
+	if not _shifting:
+		_check_world_shift()
+	if _shifting:
+		return
+
 	# Always collect finished thread results.
 	update_thread_results()
 
@@ -236,3 +258,147 @@ func _get_region_location(region: Variant) -> Vector2i:
 	if typeof(loc) == TYPE_VECTOR2I:
 		return loc
 	return Vector2i.ZERO
+
+# ── World shifting ─────────────────────────────────────────────────────
+
+## Check if the player is far enough from the terrain-local origin to trigger a shift.
+func _check_world_shift() -> void:
+	var terrain: Terrain3D = $Terrain3D
+	if not terrain or not terrain.data:
+		return
+	var player_pos: Vector3 = $Player.global_transform.origin
+	var threshold: float = terrain_coord_limit * shift_threshold_fraction
+	if absf(player_pos.x) >= threshold or absf(player_pos.z) >= threshold:
+		_perform_world_shift()
+
+## Shift the entire world so the player is re-centered near the terrain-local origin.
+## All existing terrain regions, spawned meshes, and entities are moved — nothing is
+## regenerated.
+func _perform_world_shift() -> void:
+	_shifting = true
+	var terrain: Terrain3D = $Terrain3D
+	var region_size: int = terrain.region_size
+
+	# The shift amount: player's current position snapped to region boundaries.
+	var player_pos: Vector3 = $Player.global_transform.origin
+	var shift_regions_x: int = roundi(player_pos.x / float(region_size))
+	var shift_regions_z: int = roundi(player_pos.z / float(region_size))
+	var shift := Vector3(shift_regions_x * region_size, 0, shift_regions_z * region_size)
+
+	if shift.is_zero_approx():
+		_shifting = false
+		return
+
+	print("[WorldShift] Shifting by ", shift, " (regions: ", shift_regions_x, ", ", shift_regions_z, ")")
+
+	# Update cumulative world offset (true world pos = local pos + world_offset).
+	world_offset += shift
+
+	# 1) Wait for all in-flight generation threads to finish.
+	for loc in _generation_threads.keys():
+		var thread: Thread = _generation_threads[loc]
+		if thread.is_alive():
+			thread.wait_to_finish()
+		else:
+			thread.wait_to_finish()
+	_generation_threads.clear()
+	# Discard any pending results — they used old coordinates.
+	# We need to re-key them with the shifted region locations.
+	var old_results := thread_results.duplicate()
+	thread_results.clear()
+
+	# 2) Collect all active regions and their image data BEFORE removing them.
+	var region_data: Array = []  # Array of { old_loc, new_loc, region_origin, images }
+	var shift_loc := Vector2i(shift_regions_x, shift_regions_z)
+
+	for region in terrain.data.get_regions_active():
+		var old_loc: Vector2i = _get_region_location(region)
+		var new_loc: Vector2i = old_loc - shift_loc
+		# Grab copies of the height and control maps from the region.
+		var height_img: Image = null
+		var control_img: Image = null
+		if region.has_method("get_map"):
+			height_img = region.get_map(Terrain3DRegion.TYPE_HEIGHT)
+			control_img = region.get_map(Terrain3DRegion.TYPE_CONTROL)
+		elif region.has_method("get_height_map"):
+			height_img = region.get_height_map()
+			control_img = region.get_control_map()
+		# Duplicate images so they survive region removal.
+		if height_img:
+			height_img = height_img.duplicate()
+		if control_img:
+			control_img = control_img.duplicate()
+		region_data.push_back({
+			"old_loc": old_loc,
+			"new_loc": new_loc,
+			"height_img": height_img,
+			"control_img": control_img,
+		})
+
+	# 3) Remove ALL regions from Terrain3D.
+	for region in terrain.data.get_regions_active():
+		terrain.data.remove_region(region)
+
+	# 4) Re-import regions at their new shifted positions.
+	for rd in region_data:
+		var new_loc: Vector2i = rd["new_loc"]
+		var new_origin := Vector3(new_loc.x * region_size, 0, new_loc.y * region_size)
+		# Check if the new position is within Terrain3D limits.
+		if absf(new_origin.x) > terrain_coord_limit or absf(new_origin.z) > terrain_coord_limit:
+			# This region shifted out of bounds — it will be regenerated later if needed.
+			continue
+		var imported_images: Array[Image]
+		imported_images.resize(Terrain3DRegion.TYPE_MAX)
+		imported_images[Terrain3DRegion.TYPE_HEIGHT] = rd["height_img"]
+		imported_images[Terrain3DRegion.TYPE_CONTROL] = rd["control_img"]
+		if imported_images[Terrain3DRegion.TYPE_HEIGHT] != null:
+			terrain.data.import_images(imported_images, new_origin, 0.0, 1.0)
+	terrain.data.calc_height_range(true)
+
+	# 5) Shift all entities.
+	$Player.global_transform.origin -= shift
+	$Enemy.global_transform.origin -= shift
+
+	# 6) Shift all spawned scene meshes.
+	$MeshPlacementManager.shift_all_meshes(-shift, shift_loc)
+
+	# 7) Re-key the _loaded_regions and _loading_regions dictionaries.
+	var new_loaded: Dictionary = {}
+	for loc in _loaded_regions.keys():
+		var new_loc: Vector2i = loc - shift_loc
+		new_loaded[new_loc] = true
+	_loaded_regions = new_loaded
+
+	var new_loading: Dictionary = {}
+	for loc in _loading_regions.keys():
+		var new_loc: Vector2i = loc - shift_loc
+		new_loading[new_loc] = true
+	_loading_regions = new_loading
+
+	# 8) Re-key pending thread results.
+	for result in old_results:
+		var old_loc: Vector2i = result.get("loc", Vector2i.ZERO)
+		var new_loc: Vector2i = old_loc - shift_loc
+		var old_origin: Vector3 = result.get("region_origin", Vector3.ZERO)
+		result["loc"] = new_loc
+		result["region_origin"] = old_origin - shift
+		# Shift mesh transforms in the result.
+		var transforms_by_mesh: Dictionary = result.get("transforms_by_mesh", {})
+		for asset_name in transforms_by_mesh.keys():
+			var transforms: Array = transforms_by_mesh[asset_name]
+			var shifted_transforms: Array = []
+			for t in transforms:
+				var st: Transform3D = t as Transform3D
+				st.origin -= shift
+				shifted_transforms.push_back(st)
+			transforms_by_mesh[asset_name] = shifted_transforms
+		thread_results.push_back(result)
+
+	# 9) Update GenerationJob's world_offset so noise samples at correct world coordinates.
+	$GenerationJob.world_offset = world_offset
+
+	# 10) Update the nav baker so it rebakes at the new position.
+	$NavBaker._current_center = Vector3(INF, INF, INF)
+
+	print("[WorldShift] Complete. New world_offset: ", world_offset)
+	_shifting = false

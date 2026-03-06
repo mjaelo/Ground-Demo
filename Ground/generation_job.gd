@@ -18,6 +18,11 @@ var biome_manager := BiomeManager.new()
 @onready var heightmap_resolution: int = $"../Terrain3D".region_size
 var mesh_placement_manager: MeshPlacementManager = null
 
+## Cumulative world shift offset. When generating terrain, this is added to
+## local coordinates so noise sampling produces the correct terrain even after
+## the world has been shifted back to the origin.
+var world_offset := Vector3.ZERO
+
 
 func _ready() -> void:
 	noise.frequency = noise_frequency
@@ -32,8 +37,8 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 	# First pass: generate heights — store actual world heights directly
 	for x in res:
 		for y in res:
-			var nx := (x / float(res)) * region_size + loc.x * region_size
-			var ny := (y / float(res)) * region_size + loc.y * region_size
+			var nx := (x / float(res)) * region_size + loc.x * region_size + world_offset.x
+			var ny := (y / float(res)) * region_size + loc.y * region_size + world_offset.z
 			var h := noise.get_noise_2d(nx, ny)
 			h = (h + 1.0) * 0.5
 			var curve_exp: float = biome_manager.get_height_curve(nx, ny)
@@ -44,8 +49,8 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 	# Second pass: build control map (needs height neighbours for slope)
 	for x in res:
 		for y in res:
-			var nx := (x / float(res)) * region_size + loc.x * region_size
-			var ny := (y / float(res)) * region_size + loc.y * region_size
+			var nx := (x / float(res)) * region_size + loc.x * region_size + world_offset.x
+			var ny := (y / float(res)) * region_size + loc.y * region_size + world_offset.z
 			# Approximate slope from height image neighbours (heights are already world-scale)
 			var slope_deg: float = _slope_deg_from_image(img, x, y, region_size, res, 1.0)
 			var encoded: float = biome_manager.get_encoded_control(nx, ny, slope_deg)
@@ -54,6 +59,9 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 	# Generate mesh placements
 	var transforms_by_mesh: Dictionary = {}
 	if mesh_placement_manager and mesh_placement_manager.has_method("generate_transforms"):
+		# Pass the world-coordinate origin (with offset) so mesh placement uses
+		# correct world positions for height/normal sampling and placement coordinates.
+		# The returned transforms will be in local coordinates (without offset).
 		transforms_by_mesh = mesh_placement_manager.generate_transforms(
 			region_origin_m,
 			region_size,
@@ -89,9 +97,11 @@ func _slope_deg_from_image(img: Image, px: int, py: int, region_size: int, res: 
 	return rad_to_deg(acos(clamp(n.dot(Vector3.UP), -1.0, 1.0)))
 
 func _sample_height(world_x: float, world_z: float) -> float:
-	var h := noise.get_noise_2d(world_x, world_z)
+	var wx := world_x + world_offset.x
+	var wz := world_z + world_offset.z
+	var h := noise.get_noise_2d(wx, wz)
 	h = (h + 1.0) * 0.5
-	var curve_exp: float = biome_manager.get_height_curve(world_x, world_z)
+	var curve_exp: float = biome_manager.get_height_curve(wx, wz)
 	h = pow(h, curve_exp)
 	var import_scale: float = height_max - height_min
 	return height_min + h * import_scale

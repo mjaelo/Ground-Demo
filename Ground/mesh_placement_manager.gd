@@ -264,3 +264,18 @@ func clear_scene_meshes(loc: Vector2i) -> void:
 				if is_instance_valid(node):
 					node.queue_free()
 			_scene_nodes.erase(slot_key)
+
+## Shift every spawned mesh node by the given offset and re-key the
+## internal dictionary so region-based lookups remain correct.
+## shift_loc is Vector2i(region_shift_x, region_shift_z) used for re-keying.
+func shift_all_meshes(position_offset: Vector3, shift_loc: Vector2i) -> void:
+	var new_scene_nodes: Dictionary = {}
+	for slot_key in _scene_nodes.keys():
+		var old_key: Vector3i = slot_key as Vector3i
+		var new_key := Vector3i(old_key.x - shift_loc.x, old_key.y - shift_loc.y, old_key.z)
+		var nodes: Array = _scene_nodes[slot_key]
+		for node in nodes:
+			if is_instance_valid(node):
+				(node as Node3D).global_transform.origin += position_offset
+		new_scene_nodes[new_key] = nodes
+	_scene_nodes = new_scene_nodes
