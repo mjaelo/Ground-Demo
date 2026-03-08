@@ -18,6 +18,7 @@ var _generation_job: GenerationJob = null
 var _region_stream: RegionStreamManager = null
 var _world_shift: WorldShiftManager = null
 var _enemy_manager: EnemyManager = null
+var _lod_terrain: LodTerrainManager = null
 
 # ── State ─────────────────────────────────────────────────────────────
 var _player_spawn_done: bool = false
@@ -36,6 +37,13 @@ func _process(delta: float) -> void:
 	if _world_shift.shifting:
 		return
 	_region_stream.tick(delta)
+	# Update LOD placeholders for distant regions.
+	if _lod_terrain:
+		_lod_terrain.update_lod(
+			player.global_transform.origin,
+			_region_stream.get_loaded_regions(),
+			delta
+		)
 
 # ── Setup helpers ─────────────────────────────────────────────────────
 
@@ -67,12 +75,16 @@ func _create_managers() -> void:
 	_region_stream = RegionStreamManager.new()
 	_region_stream.initialize(terrain, player, _generation_job, _mesh_placement_manager)
 
+	# LOD terrain (distant placeholder meshes)
+	_lod_terrain = LodTerrainManager.new()
+	_lod_terrain.initialize(terrain, _generation_job, self, _texture_manager)
+
 	# World shifting
 	_world_shift = WorldShiftManager.new()
 	_world_shift.initialize(
 		terrain, player, enemy, nav_baker,
 		_region_stream, _mesh_placement_manager,
-		_generation_job, get_tree()
+		_generation_job, get_tree(), _lod_terrain
 	)
 
 	# Enemy manager
@@ -105,3 +117,5 @@ func _apply_generation_result_deferred(result: Dictionary) -> void:
 ## Called by GenerationJob when a region finishes importing.
 func _mark_region_loaded(loc: Vector2i) -> void:
 	_region_stream.mark_loaded(loc)
+	if _lod_terrain:
+		_lod_terrain.mark_loaded(loc)

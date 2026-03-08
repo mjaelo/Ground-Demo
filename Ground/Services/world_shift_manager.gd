@@ -23,6 +23,7 @@ var _nav_baker: Node = null
 var _region_stream: RegionStreamManager = null
 var _mesh_placement: MeshPlacementManager = null
 var _generation_job: GenerationJob = null
+var _lod_terrain: LodTerrainManager = null
 var _scene_tree: SceneTree = null
 
 func initialize(
@@ -34,6 +35,7 @@ func initialize(
 	mesh_placement: MeshPlacementManager,
 	generation_job: GenerationJob,
 	scene_tree: SceneTree,
+	lod_terrain: LodTerrainManager = null,
 ) -> void:
 	_terrain = terrain
 	_player = player
@@ -43,6 +45,7 @@ func initialize(
 	_mesh_placement = mesh_placement
 	_generation_job = generation_job
 	_scene_tree = scene_tree
+	_lod_terrain = lod_terrain
 
 # ── Public API ────────────────────────────────────────────────────────
 
@@ -95,6 +98,13 @@ func _perform_world_shift() -> void:
 
 	# 6) Update generation job's world offset.
 	_generation_job.world_offset = world_offset
+
+	# 6b) Shift the generation job's pending-mesh-backfill dictionary.
+	_generation_job.shift_regions_needing_meshes(shift_loc, shift)
+
+	# 6c) Shift LOD placeholder meshes.
+	if _lod_terrain:
+		_lod_terrain.shift_all(-shift, shift_loc)
 
 	# 7) Force nav baker to rebake.
 	_nav_baker._current_center = Vector3(INF, INF, INF)

@@ -1,22 +1,26 @@
-﻿extends RefCounted
+extends RefCounted
 class_name RegionStreamManager
 
 ## Manages region streaming: tracks which regions are loaded / in-flight,
-## starts generation threads, collects results, and applies them in
-## priority order (closest to player first).
+## starts generation threads, collects results, and applies them in priority order (closest to player first).
 
 # ── Configuration ─────────────────────────────────────────────────────
-var stream_radius_chunks: int = 15
-var stream_check_interval: float = 2.0
-var max_concurrent_threads: int = 2
-var max_results_per_frame: int = 1
-var max_region_distance: int = 15
+var stream_radius_chunks: int = 20
+var stream_check_interval: float = 0.3
+var max_concurrent_threads: int = 6
+var max_results_per_frame: int = 4
+var max_region_distance: int = 25
+## Number of thread slots always reserved for close regions (≤2 chunks).
+var close_region_reserved_slots: int = 2
 
 # ── Internal state ────────────────────────────────────────────────────
 var _stream_timer := 0.0
+var _backfill_timer := 0.0
 var _loaded_regions: Dictionary = {}
 var _loading_regions: Dictionary = {}
 var _generation_threads: Dictionary = {}
+var _backfill_threads: Dictionary = {}   # loc -> Thread (mesh-only backfill)
+var _backfill_loading: Dictionary = {}   # loc -> true (queued for backfill)
 var _thread_results: Array = []
 
 # ── References (set via initialize) ──────────────────────────────────
@@ -37,11 +41,17 @@ func initialize(terrain: Terrain3D, player: Node3D, generation_job: GenerationJo
 ## was done (results applied or threads started).
 func tick(delta: float) -> void:
 	_collect_finished_threads()
+	_collect_finished_backfill_threads()
 	_apply_thread_results()
 	_stream_timer += delta
 	if _stream_timer >= stream_check_interval:
 		_stream_timer = 0.0
 		start_missing_generation_threads()
+	# Mesh backfill runs less frequently (every ~1s).
+	_backfill_timer += delta
+	if _backfill_timer >= 1.0:
+		_backfill_timer = 0.0
+		_start_mesh_backfill_threads()
 
 func mark_loaded(loc: Vector2i) -> void:
 	_loaded_regions[loc] = true
@@ -73,20 +83,30 @@ func start_missing_generation_threads() -> void:
 		else:
 			far_needed.push_back(loc)
 
-	# Fill thread slots — close regions have priority.
+	# Fill thread slots — close regions get priority but far regions can use
+	# remaining slots.  We always reserve `close_region_reserved_slots` slots
+	# for close regions so an arriving player isn't starved.
 	var slots_available: int = max_concurrent_threads - _generation_threads.size()
+	var close_used := 0
 	for loc in close_needed:
 		if slots_available <= 0:
 			break
 		_start_region_generation(loc)
 		slots_available -= 1
+		close_used += 1
 
+	# Far regions fill whatever slots remain (but never dip into reserved close slots).
+	var far_slots: int = mini(slots_available, max_concurrent_threads - close_region_reserved_slots - (close_used + _count_close_threads(player_region)))
+	if far_slots < 0:
+		far_slots = 0
+	# If there are no close regions at all, let far regions use every slot.
 	if close_needed.size() == 0:
-		for loc in far_needed:
-			if slots_available <= 0:
-				break
-			_start_region_generation(loc)
-			slots_available -= 1
+		far_slots = slots_available
+	for loc in far_needed:
+		if far_slots <= 0:
+			break
+		_start_region_generation(loc)
+		far_slots -= 1
 
 	# Remove distant regions.
 	for loc in _loaded_regions.keys():
@@ -135,6 +155,19 @@ func shift_pending_results(old_results: Array, shift: Vector3, shift_loc: Vector
 
 # ── Private helpers ───────────────────────────────────────────────────
 
+## Returns the number of currently running generation threads for regions
+## within 2 chunks of the given centre.
+func _count_close_threads(center: Vector2i) -> int:
+	var count := 0
+	for loc in _generation_threads.keys():
+		if loc.distance_to(center) <= 2.0:
+			count += 1
+	return count
+
+## Read-only access to the loaded regions dictionary (used by LOD manager).
+func get_loaded_regions() -> Dictionary:
+	return _loaded_regions
+
 func _start_region_generation(loc: Vector2i) -> void:
 	var thread := Thread.new()
 	_loading_regions[loc] = true
@@ -144,6 +177,43 @@ func _start_region_generation(loc: Vector2i) -> void:
 		_loading_regions.erase(loc)
 		_generation_threads.erase(loc)
 		push_error("Failed to start region generation thread: %s" % err)
+
+## Start mesh-backfill threads for regions whose heightmap is loaded but
+## decorations were skipped because they were far away at generation time.
+func _start_mesh_backfill_threads() -> void:
+	if not _terrain or not _terrain.data:
+		return
+	var player_region: Vector2i = _terrain.data.get_region_location(_player.global_transform.origin)
+	var candidates: Array[Vector2i] = _generation_job.get_regions_needing_mesh_backfill(player_region)
+	# Use at most 2 concurrent backfill threads to avoid starving new-region generation.
+	var max_backfill := 2
+	var running := _backfill_threads.size()
+	for loc in candidates:
+		if running >= max_backfill:
+			break
+		if _backfill_threads.has(loc) or _backfill_loading.has(loc):
+			continue
+		var thread := Thread.new()
+		_backfill_loading[loc] = true
+		_backfill_threads[loc] = thread
+		var err := thread.start(Callable(_generation_job, "_generate_mesh_backfill_job").bind(loc, _terrain.region_size))
+		if err != OK:
+			_backfill_loading.erase(loc)
+			_backfill_threads.erase(loc)
+		else:
+			running += 1
+
+func _collect_finished_backfill_threads() -> void:
+	for loc in _backfill_threads.keys():
+		var thread: Thread = _backfill_threads[loc]
+		if thread.is_alive():
+			continue
+		var result = thread.wait_to_finish()
+		_backfill_threads.erase(loc)
+		_backfill_loading.erase(loc)
+		if typeof(result) != TYPE_DICTIONARY:
+			continue
+		_thread_results.push_back(result)
 
 func _collect_finished_threads() -> void:
 	var player_region := Vector2i.ZERO
@@ -186,7 +256,10 @@ func _apply_thread_results() -> void:
 		if has_terrain and loc.distance_to(player_region) > max_region_distance:
 			_loading_regions.erase(loc)
 			continue
+		var is_backfill: bool = result.get("mesh_backfill", false)
 		_generation_job.apply_generation_result(result)
+		if is_backfill:
+			_generation_job.mark_mesh_backfill_complete(loc)
 		applied += 1
 
 func _remove_region(loc: Vector2i) -> void:

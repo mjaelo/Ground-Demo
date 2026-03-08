@@ -5,10 +5,6 @@
 [ext_resource type="PackedScene" uid="uid://di5fovhcyd7re" path="res://Mob/Enemy.tscn" id="3_wwltb"]
 [ext_resource type="Terrain3DAssets" uid="uid://d023f567p32oh" path="res://assets/new_terrain_3d_assets.tres" id="4_e6t8g"]
 
-[sub_resource type="NavigationMesh" id="NavigationMesh_navbk"]
-agent_height = 2.0
-agent_max_climb = 0.5
-
 [sub_resource type="Gradient" id="Gradient_jlsqs"]
 offsets = PackedFloat32Array(0.2, 1)
 colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
@@ -51,17 +47,9 @@ _shader_parameters = {
 &"noise1_scale": 0.04,
 &"noise2_scale": 0.076,
 &"noise_texture": SubResource("NoiseTexture2D_lhr70"),
-&"projection_threshold": 0.8,
-&"world_noise_fragment_normals": false,
-&"world_noise_height": 48.0000007152576,
-&"world_noise_lod_distance": 7500.0,
-&"world_noise_max_octaves": 4,
-&"world_noise_min_octaves": 2,
-&"world_noise_offset": Vector3(0, -3, 0),
-&"world_noise_region_blend": 0.7499999850986601,
-&"world_noise_scale": 5.999999871476
+&"projection_threshold": 0.8
 }
-world_background = 2
+world_background = 0
 auto_shader = true
 show_region_grid = true
 show_vertex_grid = true
@@ -72,8 +60,6 @@ script = ExtResource("1_xuh48")
 
 [node name="NavBaker" type="Node" parent="." unique_id=1935311801]
 script = ExtResource("2_rmege")
-template = SubResource("NavigationMesh_navbk")
-log_timing = true
 
 [node name="Enemy" parent="." unique_id=1174958508 instance=ExtResource("3_wwltb")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 540, 200, 540)

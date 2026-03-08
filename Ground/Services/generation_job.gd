@@ -12,6 +12,12 @@ var height_max: float = 800.0
 
 var _player_spawn_complete := false
 var _initial_player_region: Vector2i = Vector2i.ZERO
+## Regions whose heightmap is loaded but mesh decoration was skipped (far at
+## generation time).  Key: Vector2i loc, Value: Vector3 region_origin_m.
+var _regions_needing_meshes: Dictionary = {}
+## Mesh backfill distance — when a region with pending meshes is within this
+## many region-units of the player, we generate its meshes on a thread.
+var mesh_backfill_distance: float = 5.0
 
 var noise := FastNoiseLite.new()
 var biome_manager: BiomeManager = null
@@ -46,6 +52,13 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 	var ctrl: Image = Image.create_empty(res, res, false, Image.FORMAT_RF)
 	var import_scale: float = height_max - height_min
 
+	# Determine distance from player region for LOD decisions.
+	var player_region: Vector2i = _initial_player_region
+	if _terrain and _terrain.data:
+		player_region = _terrain.data.get_region_location(_player.global_transform.origin)
+	var dist_to_player: float = loc.distance_to(player_region)
+	var is_far: bool = dist_to_player > 6.0
+
 	# First pass: generate heights
 	for x in res:
 		for y in res:
@@ -67,9 +80,9 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 			var encoded: float = biome_manager.get_encoded_control(nx, ny, slope_deg)
 			ctrl.set_pixel(x, y, Color(encoded, 0., 0., 1.))
 
-	# Generate mesh placements
+	# Generate mesh placements — skip for far regions to speed up generation.
 	var transforms_by_mesh: Dictionary = {}
-	if mesh_placement_manager:
+	if mesh_placement_manager and not is_far:
 		transforms_by_mesh = mesh_placement_manager.generate_transforms(
 			region_origin_m, region_size,
 			_sample_height, _sample_normal, biome_manager
@@ -81,6 +94,7 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 		"image": img,
 		"control_image": ctrl,
 		"transforms_by_mesh": transforms_by_mesh,
+		"needs_meshes": is_far,
 	}
 
 # ── Terrain sampling ──────────────────────────────────────────────────
@@ -118,22 +132,31 @@ func apply_generation_result(result: Dictionary) -> void:
 func apply_generation_result_deferred(result: Dictionary) -> void:
 	if not _terrain or not _terrain.data:
 		return
+	var is_backfill: bool = result.get("mesh_backfill", false)
 	var imported_images: Array[Image]
 	imported_images.resize(Terrain3DRegion.TYPE_MAX)
 	imported_images[Terrain3DRegion.TYPE_HEIGHT] = result.get("image", null)
 	imported_images[Terrain3DRegion.TYPE_CONTROL] = result.get("control_image", null)
 	var region_origin_m: Vector3 = result.get("region_origin", Vector3.ZERO)
-	if imported_images[Terrain3DRegion.TYPE_HEIGHT] != null:
+	if not is_backfill and imported_images[Terrain3DRegion.TYPE_HEIGHT] != null:
 		_terrain.data.import_images.call_deferred(imported_images, region_origin_m, 0.0, 1.0)
 		_terrain.data.calc_height_range.call_deferred(true)
 
-	# Spawn meshes
+	# Spawn meshes (or track for later if this was a far region)
 	var loc: Vector2i = result.get("loc", Vector2i.ZERO)
+	var needs_meshes: bool = result.get("needs_meshes", false)
 	var transforms_by_name: Dictionary = result.get("transforms_by_mesh", {})
-	for asset_name in transforms_by_name.keys():
-		var transforms: Array = transforms_by_name[asset_name]
-		if transforms.size() > 0 and mesh_placement_manager:
-			mesh_placement_manager.spawn_meshes(asset_name, transforms, _main, loc)
+
+	if needs_meshes and transforms_by_name.is_empty():
+		# Mark this region for deferred mesh generation when player approaches.
+		_regions_needing_meshes[loc] = region_origin_m
+	else:
+		for asset_name in transforms_by_name.keys():
+			var transforms: Array = transforms_by_name[asset_name]
+			if transforms.size() > 0 and mesh_placement_manager:
+				mesh_placement_manager.spawn_meshes(asset_name, transforms, _main, loc)
+		# If it was previously queued, remove it.
+		_regions_needing_meshes.erase(loc)
 
 	# Notify the region stream manager via the main node.
 	_main.call_deferred("_mark_region_loaded", loc)
@@ -152,3 +175,51 @@ func initiate_player_spawn() -> void:
 	_player.collision_enabled = true
 	_player_spawn_complete = true
 	player_spawned.emit(_terrain)
+
+# ── Mesh backfill ─────────────────────────────────────────────────────
+
+## Returns a list of region locations that need mesh generation and are close
+## enough to the player.  Called by the stream manager to schedule backfill threads.
+func get_regions_needing_mesh_backfill(player_region: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for loc in _regions_needing_meshes.keys():
+		if loc.distance_to(player_region) <= mesh_backfill_distance:
+			result.push_back(loc)
+	# Sort by proximity.
+	result.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.distance_to(player_region) < b.distance_to(player_region)
+	)
+	return result
+
+## Thread entry-point for mesh-only backfill.  Generates only the mesh
+## transforms for a region whose heightmap is already loaded.
+func _generate_mesh_backfill_job(loc: Vector2i, region_size: int) -> Dictionary:
+	var region_origin_m: Vector3 = _regions_needing_meshes.get(loc, Vector3(loc.x * region_size, 0, loc.y * region_size))
+	var transforms_by_mesh: Dictionary = {}
+	if mesh_placement_manager:
+		transforms_by_mesh = mesh_placement_manager.generate_transforms(
+			region_origin_m, region_size,
+			_sample_height, _sample_normal, biome_manager
+		)
+	return {
+		"loc": loc,
+		"region_origin": region_origin_m,
+		"image": null,
+		"control_image": null,
+		"transforms_by_mesh": transforms_by_mesh,
+		"needs_meshes": false,
+		"mesh_backfill": true,
+	}
+
+## Called when a mesh backfill result is applied.
+func mark_mesh_backfill_complete(loc: Vector2i) -> void:
+	_regions_needing_meshes.erase(loc)
+
+## Shift the pending-mesh dictionary after a world shift.
+func shift_regions_needing_meshes(shift_loc: Vector2i, shift: Vector3) -> void:
+	var new_dict: Dictionary = {}
+	for loc in _regions_needing_meshes.keys():
+		var new_loc: Vector2i = loc - shift_loc
+		new_dict[new_loc] = _regions_needing_meshes[loc] - shift
+	_regions_needing_meshes = new_dict
+
