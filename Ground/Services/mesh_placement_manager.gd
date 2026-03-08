@@ -8,7 +8,7 @@ var empty_chance: float = 0.3 # Probability (0-1) that a coordinate is left empt
 
 const MESH_ASSETS_PATH: String = "res://assets/mesh_assets/"
 # Per-mesh placement controls loaded from JSON file.
-var placement_rules_file: String = MESH_ASSETS_PATH + "decor_placement_rules.json"
+var placement_rules_file: String = MESH_ASSETS_PATH + "decor_values.json"
 
 # asset_name (lowercase) -> PackedScene
 var _scene_assets: Dictionary = {}
@@ -58,20 +58,20 @@ func _load_placement_rules() -> void:
 	if typeof(data) != TYPE_DICTIONARY:
 		push_error("Expected JSON object in placement rules file")
 		return
-	var layers: Variant = data.get("layers", [])
-	if typeof(layers) != TYPE_ARRAY:
+	var decors_raw: Variant = data.get("decors", [])
+	if typeof(decors_raw) != TYPE_ARRAY:
 		push_error("Expected 'layers' array in placement rules")
 		return
-	for layer in layers:
-		if typeof(layer) == TYPE_DICTIONARY:
-			var decor := DecorData.from_dict(layer)
+	for decor_raw in decors_raw:
+		if typeof(decor_raw) == TYPE_DICTIONARY:
+			var decor := DecorData.from_dict(decor_raw)
 			var key: String = decor.asset_name.to_lower()
 			if not _scene_assets.has(key):
 				push_warning("placement_rules: no loaded scene matches name '%s', layer will be skipped" % decor.asset_name)
 			_placement_layers.push_back(decor)
 
 # Returns a Dictionary of asset_name (String) -> Array[Transform3D].
-func generate_transforms(region_origin_m: Vector3, region_size: int, height_sampler: Callable, normal_sampler: Callable) -> Dictionary:
+func generate_transforms(region_origin_m: Vector3, region_size: int, height_sampler: Callable, normal_sampler: Callable, biome_manager: BiomeManager = null) -> Dictionary:
 	var step: int = max(1, int(foliage_step))
 	var origin: Vector3 = region_origin_m + Vector3(-region_size * 0.5, 0, -region_size * 0.5)
 	var rng := RandomNumberGenerator.new()
@@ -106,7 +106,8 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 					continue
 				var pos_x := x + origin.x
 				var pos_z := z + origin.z
-				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, large_layers, height_sampler, normal_sampler)
+				var filtered_layers = filter_layers_by_biome(large_layers, pos_x, pos_z,biome_manager)
+				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, filtered_layers, height_sampler, normal_sampler)
 
 	# Pass 2: small assets, skipping coords blocked by large assets.
 	if not small_layers.is_empty():
@@ -120,9 +121,20 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 					continue
 				var pos_x := x + origin.x
 				var pos_z := z + origin.z
-				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, small_layers, height_sampler, normal_sampler)
+				var filtered_layers = filter_layers_by_biome(small_layers, pos_x, pos_z,biome_manager)
+				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, filtered_layers, height_sampler, normal_sampler)
 
 	return transforms_by_name
+
+
+	# Helper to filter decor layers by biome at a given world position
+func filter_layers_by_biome(layers: Array[DecorData], wx: float, wz: float, biome_manager: BiomeManager) -> Array[DecorData]:
+	if biome_manager == null:
+		return layers
+	var biome: BiomeData = biome_manager.get_biome_at(wx, wz)
+	var allowed: Array = biome.allowed_decor_ids
+	return layers.filter(func(d): return d.asset_name in allowed)
+
 
 func _pick_and_place(transforms_by_name: Dictionary, pos_x: float, pos_z: float, rng: RandomNumberGenerator, blocked: Dictionary, gx: int, gz: int, step: int, layers: Array[DecorData], height_sampler: Callable, normal_sampler: Callable) -> void:
 	var center_h: float = height_sampler.call(pos_x, pos_z)

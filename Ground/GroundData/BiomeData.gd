@@ -2,26 +2,28 @@ extends Resource
 class_name BiomeData
 
 ## Human-readable biome name.
-@export var biome_name: String = ""
-
+var biome_name: String = ""
 ## Height curve exponent applied to the base noise.
 ## Higher values = flatter/lower terrain; lower values = taller peaks.
-@export var height_curve: float = 2.0
-
+var height_curve: float = 2.0
 ## Texture ID used on flat ground (slope below steep_slope_threshold).
-@export var flat_texture_id: int = 1  # e.g. Grass
-
+var flat_texture_id: int = 1  # Grass
 ## Texture ID used on steep slopes (slope above steep_slope_threshold).
-@export var steep_texture_id: int = 0  # e.g. Rock
-
-## The slope angle (degrees) above which the steep texture is used.
-@export var steep_slope_threshold: float = 30.0
-
+var steep_texture_id: int = 0  # Rock
 ## Relative weight for biome selection. Higher = more common.
-@export var weight: float = 1.0
+var weight: float = 1.0
+## List of string IDs/names of allowed DecorData for this biome
+var allowed_decor_ids: Array = []
+# Controls patch size for this biome (lower = bigger patches)
+var biome_frequency: float = 0.00015
 
-## Returns the texture ID for a given slope angle in degrees.
-func get_texture_id(slope_deg: float) -> int:
-	if slope_deg > steep_slope_threshold:
-		return steep_texture_id
-	return flat_texture_id
+static func from_dict(entry: Dictionary) -> BiomeData:
+	var b := BiomeData.new()
+	b.biome_name = str(entry.get("name", ""))
+	b.height_curve = float(entry.get("height_curve", 2.0))
+	b.flat_texture_id = int(entry.get("flat_texture_id", 1))
+	b.steep_texture_id = int(entry.get("steep_texture_id", 0))
+	b.weight = float(entry.get("weight", 1.0))
+	b.allowed_decor_ids = entry.get("allowed_decor_ids", [])
+	b.biome_frequency = float(entry.get("biome_frequency",  0.00015))
+	return b

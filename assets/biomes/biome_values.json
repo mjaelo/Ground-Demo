@@ -1,0 +1,30 @@
+﻿{
+  "biomes": [
+    {
+      "name": "Plains",
+      "height_curve": 4.0,
+      "weight": 5.0,
+      "allowed_decor_ids": ["Grass", "Tree", "Rock"]
+    },
+    {
+      "name": "Village",
+      "height_curve": 4.0,
+      "weight": 2.0,
+      "allowed_decor_ids": ["House","Grass", "Tree", "Rock"]
+    },
+    {
+      "name": "Swamp",
+      "height_curve": 5.0,
+      "flat_texture_id": 2,
+      "steep_texture_id": 2,
+      "weight": 3.0,
+      "allowed_decor_ids": ["Tree"]
+    },
+    {
+      "name": "Mountain",
+      "height_curve": 0.4,
+      "weight": 2.0,
+      "allowed_decor_ids": ["Rock"]
+    }
+  ]
+}

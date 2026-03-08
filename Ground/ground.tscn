@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://byf3ugq8cm3eo"]
+[gd_scene format=3 uid="uid://dt4xak0xv0xyt"]
 
 [ext_resource type="Script" uid="uid://dakis6gu8b7nm" path="res://Ground/Ground.gd" id="1_xuh48"]
 [ext_resource type="Script" uid="uid://brh8x1wnycrl5" path="res://Ground/Services/RuntimeNavigationBaker.gd" id="2_rmege"]

@@ -11,16 +11,16 @@ class_name BiomeManager
 ##
 ## To add a new biome: add an entry to biome_definitions.json — that's it.
 
-const DEFAULT_BIOME_FILE := "res://assets/biomes/biome_definitions.json"
+const BIOME_VALUES_PATH := "res://assets/biomes/biome_values.json"
 
+# TODO add to Constants
+const  STEEP_THRESHOLD: float = 30.0
 # ── Biome registry ───────────────────────────────────────────────────
 var biomes: Array[BiomeData] = []
 
 # ── One noise source per biome (built automatically) ─────────────────
 var _noises: Array[FastNoiseLite] = []
 
-## Controls how large biome patches are. Lower = bigger patches.
-var noise_frequency: float = 0.00015
 ## Base seed; each biome offsets from this.
 var noise_seed: int = 7891
 
@@ -29,18 +29,18 @@ var noise_seed: int = 7891
 var blend_margin: float = 0.12
 
 func _init() -> void:
-	_load_biomes_from_json(DEFAULT_BIOME_FILE)
+	_load_biomes_from_json()
 	_build_noises()
 
 # ── JSON loading ──────────────────────────────────────────────────────
-func _load_biomes_from_json(path: String) -> void:
-	if not FileAccess.file_exists(path):
-		push_warning("BiomeManager: biome file not found: %s — using defaults" % path)
+func _load_biomes_from_json() -> void:
+	if not FileAccess.file_exists(BIOME_VALUES_PATH):
+		push_warning("BiomeManager: biome file not found: %s — using defaults" % BIOME_VALUES_PATH)
 		_register_default_biomes()
 		return
-	var file := FileAccess.open(path, FileAccess.READ)
+	var file := FileAccess.open(BIOME_VALUES_PATH, FileAccess.READ)
 	if file == null:
-		push_warning("BiomeManager: failed to open: %s — using defaults" % path)
+		push_warning("BiomeManager: failed to open: %s — using defaults" % BIOME_VALUES_PATH)
 		_register_default_biomes()
 		return
 	var json_text := file.get_as_text()
@@ -48,26 +48,18 @@ func _load_biomes_from_json(path: String) -> void:
 	var json := JSON.new()
 	var err := json.parse(json_text)
 	if err != OK:
-		push_error("BiomeManager: JSON parse error in %s at line %d: %s" % [path, json.get_error_line(), json.get_error_message()])
+		push_error("BiomeManager: JSON parse error in %s at line %d: %s" % [BIOME_VALUES_PATH, json.get_error_line(), json.get_error_message()])
 		_register_default_biomes()
 		return
 	var data: Variant = json.data
 	if typeof(data) != TYPE_DICTIONARY:
-		push_error("BiomeManager: expected JSON object in %s" % path)
+		push_error("BiomeManager: expected JSON object in %s" % BIOME_VALUES_PATH)
 		_register_default_biomes()
 		return
 
-	# Load global noise settings from file.
-	if data.has("noise_frequency"):
-		noise_frequency = float(data["noise_frequency"])
-	if data.has("noise_seed"):
-		noise_seed = int(data["noise_seed"])
-	if data.has("blend_margin"):
-		blend_margin = float(data["blend_margin"])
-
 	var biome_array: Variant = data.get("biomes", [])
 	if typeof(biome_array) != TYPE_ARRAY or biome_array.size() == 0:
-		push_warning("BiomeManager: no biomes array in %s — using defaults" % path)
+		push_warning("BiomeManager: no biomes array in %s — using defaults" % BIOME_VALUES_PATH)
 		_register_default_biomes()
 		return
 
@@ -75,17 +67,11 @@ func _load_biomes_from_json(path: String) -> void:
 	for entry in biome_array:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
-		var b := BiomeData.new()
-		b.biome_name = str(entry.get("name", ""))
-		b.height_curve = float(entry.get("height_curve", 2.0))
-		b.flat_texture_id = int(entry.get("flat_texture_id", 1))
-		b.steep_texture_id = int(entry.get("steep_texture_id", 0))
-		b.steep_slope_threshold = float(entry.get("steep_slope_threshold", 30.0))
-		b.weight = float(entry.get("weight", 1.0))
+		var b := BiomeData.from_dict(entry)
 		biomes.push_back(b)
 
 	if biomes.is_empty():
-		push_warning("BiomeManager: parsed 0 valid biomes from %s — using defaults" % path)
+		push_warning("BiomeManager: parsed 0 valid biomes from %s — using defaults" % BIOME_VALUES_PATH)
 		_register_default_biomes()
 
 # ── Fallback default biome definitions ────────────────────────────────
@@ -115,7 +101,7 @@ func _build_noises() -> void:
 	for i in biomes.size():
 		var n := FastNoiseLite.new()
 		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		n.frequency = noise_frequency
+		n.frequency = biomes[i].biome_frequency # Use per-biome frequency for patch size
 		n.seed = noise_seed + i * 5137   # different seed per biome
 		_noises.append(n)
 
@@ -153,12 +139,12 @@ func get_encoded_control(world_x: float, world_z: float, slope_deg: float) -> fl
 			second_i = i
 
 	var primary: BiomeData = biomes[best_i]
-	var base_tex: int = primary.get_texture_id(slope_deg)
+	var base_tex: int = get_texture_id(slope_deg, primary.steep_texture_id, primary.flat_texture_id)
 
 	# Blend with secondary biome if it has significant influence
 	if second_i >= 0 and bw[second_i] > 0.01:
 		var secondary: BiomeData = biomes[second_i]
-		var over_tex: int = secondary.get_texture_id(slope_deg)
+		var over_tex: int = get_texture_id(slope_deg, secondary.steep_texture_id, secondary.flat_texture_id)
 		if over_tex != base_tex:
 			var total: float = bw[best_i] + bw[second_i]
 			var blend_t: float = bw[second_i] / total  # 0..0.5
@@ -251,3 +237,10 @@ static func encode_control(base_id: int, overlay_id: int = -1, blend_byte: int =
 	buf.resize(4)
 	buf.encode_u32(0, bits)
 	return buf.decode_float(0)
+
+
+## Returns the texture ID for a given slope angle in degrees.
+func get_texture_id(slope_deg: float, steep_texture_id, flat_texture_id) -> int:
+	if slope_deg > STEEP_THRESHOLD:
+		return steep_texture_id
+	return flat_texture_id

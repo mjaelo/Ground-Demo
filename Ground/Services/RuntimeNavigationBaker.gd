@@ -2,18 +2,18 @@ extends Node
 
 signal bake_finished
 
-@export var enabled: bool = true : set = set_enabled
-@export var enter_cost: float = 0.0 : set = set_enter_cost
-@export var travel_cost: float = 1.0 : set = set_travel_cost
-@export_flags_3d_navigation var navigation_layers: int = 1 : set = set_navigation_layers
-@export var template: NavigationMesh : set = set_template
-@export var terrain: Terrain3D
-@export var player: Node3D
-@export var mesh_size := Vector3(256, 512, 256)
-@export var min_rebake_distance: float = 64.0
-@export var bake_cooldown: float = 1.0
-@export_group("Debug")
-@export var log_timing: bool = false
+var enabled: bool = true : set = set_enabled
+var enter_cost: float = 0.0 : set = set_enter_cost
+var travel_cost: float = 1.0 : set = set_travel_cost
+var navigation_layers: int = 1 : set = set_navigation_layers
+var template: NavigationMesh : set = set_template
+var terrain: Terrain3D
+var player: Node3D
+var mesh_size := Vector3(256, 512, 256)
+var min_rebake_distance: float = 64.0
+var bake_cooldown: float = 1.0
+
+var log_timing: bool = false
 
 var _scene_geometry: NavigationMeshSourceGeometryData3D
 var _current_center := Vector3(INF,INF,INF)

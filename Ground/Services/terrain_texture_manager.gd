@@ -1,7 +1,7 @@
 extends RefCounted
 class_name TerrainTextureManager
 
-const DEFAULT_TEXTURES_FILE := "res://assets/textures/ground_textures.json"
+const DEFAULT_TEXTURES_FILE := "res://assets/textures/texture_values.json"
 
 var loaded_textures: Dictionary = {}
 
