@@ -1,0 +1,31 @@
+﻿{
+  "noise_frequency": 0.00015,
+  "noise_seed": 7891,
+  "blend_margin": 0.12,
+  "biomes": [
+    {
+      "name": "Plains",
+      "height_curve": 4.0,
+      "flat_texture_id": 1,
+      "steep_texture_id": 0,
+      "steep_slope_threshold": 30.0,
+      "weight": 5.0
+    },
+    {
+      "name": "Swamp",
+      "height_curve": 5.0,
+      "flat_texture_id": 2,
+      "steep_texture_id": 2,
+      "steep_slope_threshold": 30.0,
+      "weight": 3.0
+    },
+    {
+      "name": "Mountain",
+      "height_curve": 0.4,
+      "flat_texture_id": 1,
+      "steep_texture_id": 0,
+      "steep_slope_threshold": 30.0,
+      "weight": 2.0
+    }
+  ]
+}

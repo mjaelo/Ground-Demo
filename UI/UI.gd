@@ -2,23 +2,25 @@ extends Control
 
 var player: Node
 var visible_mode: int = 1
+@onready var label = $Label
+@onready var panel = $Label/Panel
 
 func _init() -> void:
 	RenderingServer.set_debug_generate_wireframes(true)
 
 
 func _process(_delta) -> void:
-	$Label.text = "FPS: %d\n" % Engine.get_frames_per_second()
+	label.text = "FPS: %d\n" % Engine.get_frames_per_second()
 	if(visible_mode == 1):
-		$Label.text += "Move Speed: %.1f\n" % player.MOVE_SPEED if player else ""
+		label.text += "Move Speed: %.1f\n" % player.MOVE_SPEED if player else ""
 		# Show true world position (local pos + cumulative world shift offset).
 		if player:
 			var main_node: Node = get_parent()
 			var offset: Vector3 = main_node.get("world_offset") if main_node.get("world_offset") != null else Vector3.ZERO
 			var true_pos: Vector3 = player.global_position + offset
-			$Label.text += "Position: %.1v\n" % true_pos
-			$Label.text += "Local Pos: %.1v\n" % player.global_position
-		$Label.text += """
+			label.text += "Position: %.1v\n" % true_pos
+			label.text += "Local Pos: %.1v\n" % player.global_position
+		label.text += """
 			Player
 			Move: WASDEQ,Space,Mouse
 			Move speed: Wheel,+/-,Shift
@@ -42,7 +44,7 @@ func _unhandled_key_input(p_event: InputEvent) -> void:
 				get_tree().quit()
 			KEY_F9:
 				visible_mode = (visible_mode + 1 ) % 3
-				$Label/Panel.visible = (visible_mode == 1)
+				panel.visible = (visible_mode == 1)
 				visible = visible_mode > 0
 			KEY_F10:
 				var vp = get_viewport()

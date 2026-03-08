@@ -14,9 +14,6 @@ class_name BiomeData
 ## Texture ID used on steep slopes (slope above steep_slope_threshold).
 @export var steep_texture_id: int = 0  # e.g. Rock
 
-## If true, a single texture covers the whole biome regardless of slope.
-@export var uniform_texture: bool = false
-
 ## The slope angle (degrees) above which the steep texture is used.
 @export var steep_slope_threshold: float = 30.0
 
@@ -25,8 +22,6 @@ class_name BiomeData
 
 ## Returns the texture ID for a given slope angle in degrees.
 func get_texture_id(slope_deg: float) -> int:
-	if uniform_texture:
-		return flat_texture_id
 	if slope_deg > steep_slope_threshold:
 		return steep_texture_id
 	return flat_texture_id

@@ -1,14 +1,14 @@
-extends Node
+extends RefCounted
 class_name MeshPlacementManager
 # TODO house scenes are not rotated
 
 # Distance between placed foliage instances; lower = denser.
-@export var foliage_step: int = 2
-@export var empty_chance: float = 0.3 # Probability (0-1) that a coordinate is left empty (no asset placed)
+var foliage_step: int = 2
+var empty_chance: float = 0.3 # Probability (0-1) that a coordinate is left empty (no asset placed)
 
 const MESH_ASSETS_PATH: String = "res://assets/mesh_assets/"
 # Per-mesh placement controls loaded from JSON file.
-@export_file("*.json") var placement_rules_file: String = MESH_ASSETS_PATH + "decor_placement_rules.json"
+var placement_rules_file: String = MESH_ASSETS_PATH + "decor_placement_rules.json"
 
 # asset_name (lowercase) -> PackedScene
 var _scene_assets: Dictionary = {}

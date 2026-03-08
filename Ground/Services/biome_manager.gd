@@ -9,7 +9,9 @@ class_name BiomeManager
 ## they blend smoothly. This produces organic blob-shaped regions with
 ## no contour-line or grid artifacts.
 ##
-## To add a new biome: append a BiomeData to `biomes` — that's it.
+## To add a new biome: add an entry to biome_definitions.json — that's it.
+
+const DEFAULT_BIOME_FILE := "res://assets/biomes/biome_definitions.json"
 
 # ── Biome registry ───────────────────────────────────────────────────
 var biomes: Array[BiomeData] = []
@@ -27,34 +29,83 @@ var noise_seed: int = 7891
 var blend_margin: float = 0.12
 
 func _init() -> void:
-	_register_default_biomes()
+	_load_biomes_from_json(DEFAULT_BIOME_FILE)
 	_build_noises()
 
-# ── Default biome definitions ─────────────────────────────────────────
+# ── JSON loading ──────────────────────────────────────────────────────
+func _load_biomes_from_json(path: String) -> void:
+	if not FileAccess.file_exists(path):
+		push_warning("BiomeManager: biome file not found: %s — using defaults" % path)
+		_register_default_biomes()
+		return
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_warning("BiomeManager: failed to open: %s — using defaults" % path)
+		_register_default_biomes()
+		return
+	var json_text := file.get_as_text()
+	file.close()
+	var json := JSON.new()
+	var err := json.parse(json_text)
+	if err != OK:
+		push_error("BiomeManager: JSON parse error in %s at line %d: %s" % [path, json.get_error_line(), json.get_error_message()])
+		_register_default_biomes()
+		return
+	var data: Variant = json.data
+	if typeof(data) != TYPE_DICTIONARY:
+		push_error("BiomeManager: expected JSON object in %s" % path)
+		_register_default_biomes()
+		return
+
+	# Load global noise settings from file.
+	if data.has("noise_frequency"):
+		noise_frequency = float(data["noise_frequency"])
+	if data.has("noise_seed"):
+		noise_seed = int(data["noise_seed"])
+	if data.has("blend_margin"):
+		blend_margin = float(data["blend_margin"])
+
+	var biome_array: Variant = data.get("biomes", [])
+	if typeof(biome_array) != TYPE_ARRAY or biome_array.size() == 0:
+		push_warning("BiomeManager: no biomes array in %s — using defaults" % path)
+		_register_default_biomes()
+		return
+
+	biomes.clear()
+	for entry in biome_array:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
+		var b := BiomeData.new()
+		b.biome_name = str(entry.get("name", ""))
+		b.height_curve = float(entry.get("height_curve", 2.0))
+		b.flat_texture_id = int(entry.get("flat_texture_id", 1))
+		b.steep_texture_id = int(entry.get("steep_texture_id", 0))
+		b.steep_slope_threshold = float(entry.get("steep_slope_threshold", 30.0))
+		b.weight = float(entry.get("weight", 1.0))
+		biomes.push_back(b)
+
+	if biomes.is_empty():
+		push_warning("BiomeManager: parsed 0 valid biomes from %s — using defaults" % path)
+		_register_default_biomes()
+
+# ── Fallback default biome definitions ────────────────────────────────
 func _register_default_biomes() -> void:
 	var plains := BiomeData.new()
 	plains.biome_name = "Plains"
 	plains.height_curve = 4.0
-	plains.flat_texture_id = 1   # Grass
-	plains.steep_texture_id = 0  # Rock
-	plains.uniform_texture = false
-	plains.weight = 5.0          # Most common
+	plains.weight = 5.0
 
 	var swamp := BiomeData.new()
 	swamp.biome_name = "Swamp"
-	swamp.height_curve = 5.0     # Very flat
-	swamp.flat_texture_id = 2    # Mud
-	swamp.steep_texture_id = 2   # Mud
-	swamp.uniform_texture = true
+	swamp.height_curve = 5.0
+	swamp.flat_texture_id = 2
+	swamp.steep_texture_id = 2
 	swamp.weight = 3.0
 
 	var mountain := BiomeData.new()
 	mountain.biome_name = "Mountain"
-	mountain.height_curve = 0.4  # Tall peaks
-	mountain.flat_texture_id = 1 # Grass
-	mountain.steep_texture_id = 0 # Rock
-	mountain.uniform_texture = false
-	mountain.weight = 2.0        # Rarest
+	mountain.height_curve = 0.4
+	mountain.weight = 2.0
 
 	biomes = [plains, swamp, mountain]
 

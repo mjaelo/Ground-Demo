@@ -1,21 +1,21 @@
-extends Node
+extends RefCounted
+class_name GenerationJob
 
 signal player_spawned
 
 # ── Terrain noise ──────────────────────────────────────────────────────
-@export var noise_frequency: float = 0.0009
-
+var noise_frequency: float = 0.0009
 
 # ── Height range ──────────────────────────────────────────────────────
-@export var height_min: float = 0.0
-@export var height_max: float = 800.0
+var height_min: float = 0.0
+var height_max: float = 800.0
 
 var _player_spawn_complete := false
 
 var _initial_player_region: Vector2i = Vector2i.ZERO
 var noise := FastNoiseLite.new()
-var biome_manager := BiomeManager.new()
-@onready var heightmap_resolution: int = $"../Terrain3D".region_size
+var biome_manager: BiomeManager = null
+var heightmap_resolution: int = 256
 var mesh_placement_manager: MeshPlacementManager = null
 
 ## Cumulative world shift offset. When generating terrain, this is added to
@@ -23,8 +23,17 @@ var mesh_placement_manager: MeshPlacementManager = null
 ## the world has been shifted back to the origin.
 var world_offset := Vector3.ZERO
 
+## References set by Main during initialization.
+var _terrain: Terrain3D = null
+var _player: CharacterBody3D = null
+var _main: Node = null
 
-func _ready() -> void:
+func initialize(terrain: Terrain3D, player: CharacterBody3D, main: Node, p_biome_manager: BiomeManager) -> void:
+	_terrain = terrain
+	_player = player
+	_main = main
+	biome_manager = p_biome_manager
+	heightmap_resolution = terrain.region_size
 	noise.frequency = noise_frequency
 
 func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
@@ -112,12 +121,12 @@ func _sample_normal(world_x: float, world_z: float) -> Vector3:
 	var dz := _sample_height(world_x, world_z + 1.0) - base_height
 	return Vector3(-dx, 1.0, -dz).normalized()
 
-func _apply_generation_result(result: Dictionary) -> void:
-	call_deferred("_apply_generation_result_defered",result)
+func apply_generation_result(result: Dictionary) -> void:
+	# Use _main to call deferred on the main thread.
+	_main.call_deferred("_apply_generation_result_deferred", result)
 
-func _apply_generation_result_defered(result: Dictionary) -> void:
-	var terrain: Terrain3D = $"../Terrain3D"
-	if not terrain or not terrain.data:
+func apply_generation_result_deferred(result: Dictionary) -> void:
+	if not _terrain or not _terrain.data:
 		return
 	var imported_images: Array[Image]
 	imported_images.resize(Terrain3DRegion.TYPE_MAX)
@@ -128,8 +137,8 @@ func _apply_generation_result_defered(result: Dictionary) -> void:
 	if imported_images[Terrain3DRegion.TYPE_HEIGHT] != null:
 		# Heights are pre-baked to world scale, so offset=0 scale=1.
 		# This is critical: import_scale != 1 could corrupt control map bit patterns.
-		terrain.data.import_images.call_deferred(imported_images, region_origin_m, 0.0, 1.0)
-		terrain.data.calc_height_range.call_deferred(true)
+		_terrain.data.import_images.call_deferred(imported_images, region_origin_m, 0.0, 1.0)
+		_terrain.data.calc_height_range.call_deferred(true)
 	var transforms_by_name: Dictionary = result.get("transforms_by_mesh", {})
 	var loc: Vector2i = result.get("loc", Vector2i.ZERO)
 	for asset_name in transforms_by_name.keys():
@@ -137,24 +146,22 @@ func _apply_generation_result_defered(result: Dictionary) -> void:
 		if transforms.size() == 0:
 			continue
 		if mesh_placement_manager:
-			mesh_placement_manager.spawn_meshes(asset_name, transforms, get_parent(), loc)
+			mesh_placement_manager.spawn_meshes(asset_name, transforms, _main, loc)
 	# Mark region as loaded so the streaming system doesn't regenerate it.
-	var main: Node = get_parent()
-	if main.has_method("get") and main.get("_loaded_regions") != null:
-		main._loaded_regions[loc] = true
-	if main.get("_loading_regions") != null:
-		main._loading_regions.erase(loc)
+	if _main.get("_loaded_regions") != null:
+		_main._loaded_regions[loc] = true
+	if _main.get("_loading_regions") != null:
+		_main._loading_regions.erase(loc)
 	if not _player_spawn_complete and loc == _initial_player_region:
-		call_deferred("initiate_player_spawn", terrain)
+		_main.call_deferred("_deferred_player_spawn")
 
-func initiate_player_spawn(terrain: Terrain3D) -> void:
-	var player:CharacterBody3D = $"../Player"
-	var target_pos: Vector3 = player.global_transform.origin
-	var h := terrain.data.get_height(target_pos)
+func initiate_player_spawn() -> void:
+	var target_pos: Vector3 = _player.global_transform.origin
+	var h := _terrain.data.get_height(target_pos)
 	if is_nan(h):
 		h = height_min + 5.0
-	player.global_transform.origin.y = h + 5.0
-	player.gravity_enabled = true
-	player.collision_enabled = true
+	_player.global_transform.origin.y = h + 5.0
+	_player.gravity_enabled = true
+	_player.collision_enabled = true
 	_player_spawn_complete = true
-	player_spawned.emit(terrain)
+	player_spawned.emit(_terrain)
