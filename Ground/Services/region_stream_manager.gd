@@ -2,15 +2,14 @@ extends RefCounted
 class_name RegionStreamManager
 
 ## Manages region streaming: tracks which regions are loaded / in-flight,
-## starts generation threads, collects results, and applies them in priority order (closest to player first).
+## starts generation threads, collects results, and applies them in priority order.
 
 # ── Configuration ─────────────────────────────────────────────────────
 var stream_radius_chunks: int = 20
-var stream_check_interval: float = 0.3
-var max_concurrent_threads: int = 6
-var max_results_per_frame: int = 4
+var stream_check_interval: float = 0.15
+var max_concurrent_threads: int = 8
+var max_results_per_frame: int = 6
 var max_region_distance: int = 25
-## Number of thread slots always reserved for close regions (≤2 chunks).
 var close_region_reserved_slots: int = 2
 
 # ── Internal state ────────────────────────────────────────────────────
@@ -19,11 +18,11 @@ var _backfill_timer := 0.0
 var _loaded_regions: Dictionary = {}
 var _loading_regions: Dictionary = {}
 var _generation_threads: Dictionary = {}
-var _backfill_threads: Dictionary = {}   # loc -> Thread (mesh-only backfill)
-var _backfill_loading: Dictionary = {}   # loc -> true (queued for backfill)
+var _backfill_threads: Dictionary = {}
+var _backfill_loading: Dictionary = {}
 var _thread_results: Array = []
 
-# ── References (set via initialize) ──────────────────────────────────
+# ── References ────────────────────────────────────────────────────────
 var _terrain: Terrain3D = null
 var _player: Node3D = null
 var _generation_job: GenerationJob = null
@@ -34,6 +33,21 @@ func initialize(terrain: Terrain3D, player: Node3D, generation_job: GenerationJo
 	_player = player
 	_generation_job = generation_job
 	_mesh_placement_manager = mesh_placement_manager
+
+## Scan Terrain3D for regions that already exist on disk (e.g. editor-
+## pregenerated) and register them as loaded so the streaming system
+## doesn't regenerate or create LOD placeholders for them.
+func register_existing_regions() -> void:
+	if not _terrain or not _terrain.data:
+		return
+	var active_regions = _terrain.data.get_regions_active()
+	var count := 0
+	for region in active_regions:
+		var loc: Vector2i = _get_region_location(region)
+		_loaded_regions[loc] = true
+		count += 1
+	if count > 0:
+		print("[RegionStream] Pre-registered %d existing terrain regions" % count)
 
 # ── Public API ────────────────────────────────────────────────────────
 
@@ -240,7 +254,6 @@ func _apply_thread_results() -> void:
 	var player_region := Vector2i.ZERO
 	if has_terrain:
 		player_region = _terrain.data.get_region_location(_player.global_transform.origin)
-
 	# Sort by proximity to player.
 	if has_terrain and _thread_results.size() > 1:
 		_thread_results.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -248,7 +261,6 @@ func _apply_thread_results() -> void:
 			var lb: Vector2i = b.get("loc", Vector2i.ZERO)
 			return la.distance_to(player_region) < lb.distance_to(player_region)
 		)
-
 	var applied := 0
 	while _thread_results.size() > 0 and applied < max_results_per_frame:
 		var result: Dictionary = _thread_results.pop_front()

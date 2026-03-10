@@ -21,7 +21,6 @@ var mesh_backfill_distance: float = 5.0
 
 var noise := FastNoiseLite.new()
 var biome_manager: BiomeManager = null
-var heightmap_resolution: int = 256
 var mesh_placement_manager: MeshPlacementManager = null
 
 ## Cumulative world shift offset.
@@ -38,7 +37,6 @@ func initialize(terrain: Terrain3D, player: CharacterBody3D, main: Node, p_biome
 	_main = main
 	biome_manager = p_biome_manager
 	mesh_placement_manager = p_mesh_placement
-	heightmap_resolution = terrain.region_size
 	noise.frequency = noise_frequency
 	if terrain and terrain.data:
 		_initial_player_region = terrain.data.get_region_location(player.global_transform.origin)
@@ -47,9 +45,8 @@ func initialize(terrain: Terrain3D, player: CharacterBody3D, main: Node, p_biome
 
 func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 	var region_origin_m := Vector3(loc.x * region_size, 0, loc.y * region_size)
-	var res: int = heightmap_resolution
-	var img: Image = Image.create_empty(res, res, false, Image.FORMAT_RF)
-	var ctrl: Image = Image.create_empty(res, res, false, Image.FORMAT_RF)
+	# Terrain3D requires images at region_size resolution for import_images.
+	var res: int = region_size
 	var import_scale: float = height_max - height_min
 
 	# Determine distance from player region for LOD decisions.
@@ -59,26 +56,36 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 	var dist_to_player: float = loc.distance_to(player_region)
 	var is_far: bool = dist_to_player > 6.0
 
-	# First pass: generate heights
+	var img: Image = Image.create_empty(res, res, false, Image.FORMAT_RF)
+	var ctrl: Image = Image.create_empty(res, res, false, Image.FORMAT_RF)
+	var inv_res := 1.0 / float(res)
+	var base_x: float = loc.x * region_size + world_offset.x
+	var base_z: float = loc.y * region_size + world_offset.z
+
+	# Pass 1: heightmap (must complete before slope can be calculated)
 	for x in res:
+		var nx: float = (x * inv_res) * region_size + base_x
 		for y in res:
-			var nx := (x / float(res)) * region_size + loc.x * region_size + world_offset.x
-			var ny := (y / float(res)) * region_size + loc.y * region_size + world_offset.z
-			var h := noise.get_noise_2d(nx, ny)
+			var ny: float = (y * inv_res) * region_size + base_z
+			var h: float = noise.get_noise_2d(nx, ny)
 			h = (h + 1.0) * 0.5
 			var curve_exp: float = biome_manager.get_height_curve(nx, ny)
 			h = pow(h, curve_exp)
-			var world_h: float = height_min + h * import_scale
-			img.set_pixel(x, y, Color(world_h, 0., 0., 1.))
+			img.set_pixel(x, y, Color(height_min + h * import_scale, 0., 0., 1.))
 
-	# Second pass: build control map (needs height neighbours for slope)
+	# Pass 2: control map (slope needs neighbor heights)
+	var cell_size: float = float(region_size) / float(res - 1)
 	for x in res:
+		var nx: float = (x * inv_res) * region_size + base_x
 		for y in res:
-			var nx := (x / float(res)) * region_size + loc.x * region_size + world_offset.x
-			var ny := (y / float(res)) * region_size + loc.y * region_size + world_offset.z
-			var slope_deg: float = _slope_deg_from_image(img, x, y, region_size, res, 1.0)
-			var encoded: float = biome_manager.get_encoded_control(nx, ny, slope_deg)
-			ctrl.set_pixel(x, y, Color(encoded, 0., 0., 1.))
+			var ny: float = (y * inv_res) * region_size + base_z
+			var h_c: float = img.get_pixel(x, y).r
+			var h_r: float = h_c if x + 1 >= res else img.get_pixel(x + 1, y).r
+			var h_d: float = h_c if y + 1 >= res else img.get_pixel(x, y + 1).r
+			var dx: float = (h_r - h_c) / cell_size
+			var dz: float = (h_d - h_c) / cell_size
+			var slope_deg: float = rad_to_deg(acos(clampf(Vector3(-dx, 1.0, -dz).normalized().dot(Vector3.UP), -1.0, 1.0)))
+			ctrl.set_pixel(x, y, Color(biome_manager.get_encoded_control(nx, ny, slope_deg), 0., 0., 1.))
 
 	# Generate mesh placements — skip for far regions to speed up generation.
 	var transforms_by_mesh: Dictionary = {}
@@ -99,15 +106,6 @@ func _generate_region_job(loc: Vector2i, region_size: int) -> Dictionary:
 
 # ── Terrain sampling ──────────────────────────────────────────────────
 
-func _slope_deg_from_image(img: Image, px: int, py: int, region_size: int, res: int, import_scale: float) -> float:
-	var h_c: float = img.get_pixel(px, py).r * import_scale
-	var h_r: float = h_c if px + 1 >= res else img.get_pixel(px + 1, py).r * import_scale
-	var h_d: float = h_c if py + 1 >= res else img.get_pixel(px, py + 1).r * import_scale
-	var cell_size: float = float(region_size) / float(res)
-	var dx: float = (h_r - h_c) / cell_size
-	var dz: float = (h_d - h_c) / cell_size
-	var n := Vector3(-dx, 1.0, -dz).normalized()
-	return rad_to_deg(acos(clamp(n.dot(Vector3.UP), -1.0, 1.0)))
 
 func _sample_height(world_x: float, world_z: float) -> float:
 	var wx := world_x + world_offset.x
@@ -222,4 +220,3 @@ func shift_regions_needing_meshes(shift_loc: Vector2i, shift: Vector3) -> void:
 		var new_loc: Vector2i = loc - shift_loc
 		new_dict[new_loc] = _regions_needing_meshes[loc] - shift
 	_regions_needing_meshes = new_dict
-

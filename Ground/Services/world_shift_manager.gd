@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends RefCounted
 class_name WorldShiftManager
 
 ## Handles world-origin shifting to keep floating-point precision high.
@@ -66,6 +66,14 @@ func _perform_world_shift() -> void:
 	shifting = true
 	var region_size: int = _terrain.region_size
 
+	# Disable player physics/collision during shift
+	if _player.has_method("set_physics_process"):
+		_player.set_physics_process(false)
+	if _player.has_method("set_collision_layer"):
+		_player.set_collision_layer(0)
+	if _player.has_method("set_collision_mask"):
+		_player.set_collision_mask(0)
+
 	var player_pos: Vector3 = _player.global_transform.origin
 	var shift_regions_x: int = roundi(player_pos.x / float(region_size))
 	var shift_regions_z: int = roundi(player_pos.z / float(region_size))
@@ -74,9 +82,7 @@ func _perform_world_shift() -> void:
 	if shift.is_zero_approx():
 		shifting = false
 		return
-
-	print("[WorldShift] Shifting by ", shift, " (regions: ", shift_regions_x, ", ", shift_regions_z, ")")
-
+	
 	world_offset += shift
 	var shift_loc := Vector2i(shift_regions_x, shift_regions_z)
 
@@ -112,18 +118,59 @@ func _perform_world_shift() -> void:
 	# 8) Collect all active region data BEFORE removing them.
 	var region_data: Array = _collect_region_data(shift_loc)
 
-	# 9) Remove ALL regions.
-	for region in _terrain.data.get_regions_active():
-		_terrain.data.remove_region(region)
+	# 9) Remove ALL regions in batches to avoid freeze.
+	var regions_to_remove := _terrain.data.get_regions_active()
+	var remove_batch := 2
+	var removed := 0
+	while regions_to_remove.size() > 0:
+		for i in range(min(remove_batch, regions_to_remove.size())):
+			var region = regions_to_remove.pop_back()
+			_terrain.data.remove_region(region)
+			removed += 1
+		if removed % remove_batch == 0:
+			await _scene_tree.process_frame
+			await _scene_tree.process_frame
+			await _scene_tree.process_frame
+			await _scene_tree.process_frame
 
-	await _scene_tree.process_frame
-	await _scene_tree.process_frame
+	# 10) Sort region_data by distance to player for prioritized import.
+	region_data.sort_custom(func(a, b):
+		var apos = Vector2(a["new_loc"].x, a["new_loc"].y)
+		var bpos = Vector2(b["new_loc"].x, b["new_loc"].y)
+		var ppos = Vector2(roundi(_player.global_transform.origin.x / region_size), roundi(_player.global_transform.origin.z / region_size))
+		return apos.distance_to(ppos) < bpos.distance_to(ppos)
+	)
 
-	# 10) Re-import in small batches.
-	var imported_count := await _reimport_regions(region_data, region_size)
+	# 11) Re-import in small batches.
+	var imported_count := 0
+	for rd in region_data:
+		var new_loc: Vector2i = rd["new_loc"]
+		var new_origin := Vector3(new_loc.x * region_size, 0, new_loc.y * region_size)
+		if absf(new_origin.x) > terrain_coord_limit or absf(new_origin.z) > terrain_coord_limit:
+			continue
+		if rd["height_img"] == null:
+			continue
+		var imported_images: Array[Image]
+		imported_images.resize(Terrain3DRegion.TYPE_MAX)
+		imported_images[Terrain3DRegion.TYPE_HEIGHT] = rd["height_img"]
+		imported_images[Terrain3DRegion.TYPE_CONTROL] = rd["control_img"]
+		_terrain.data.import_images(imported_images, new_origin, 0.0, 1.0)
+		imported_count += 1
+		if imported_count % 1 == 0:
+			await _scene_tree.process_frame
+			await _scene_tree.process_frame
+			await _scene_tree.process_frame
+			await _scene_tree.process_frame
+		# Re-enable player as soon as the region under them is loaded
+		if imported_count == 1:
+			if _player.has_method("set_physics_process"):
+				_player.set_physics_process(true)
+			if _player.has_method("set_collision_layer"):
+				_player.set_collision_layer(1)
+			if _player.has_method("set_collision_mask"):
+				_player.set_collision_mask(1)
 
 	_terrain.data.calc_height_range(true)
-	print("[WorldShift] Complete. New world_offset: ", world_offset, " (re-imported ", imported_count, " regions)")
 	shifting = false
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -151,25 +198,6 @@ func _collect_region_data(shift_loc: Vector2i) -> Array:
 			"control_img": control_img,
 		})
 	return region_data
-
-func _reimport_regions(region_data: Array, region_size: int) -> int:
-	var imported_count := 0
-	for rd in region_data:
-		var new_loc: Vector2i = rd["new_loc"]
-		var new_origin := Vector3(new_loc.x * region_size, 0, new_loc.y * region_size)
-		if absf(new_origin.x) > terrain_coord_limit or absf(new_origin.z) > terrain_coord_limit:
-			continue
-		if rd["height_img"] == null:
-			continue
-		var imported_images: Array[Image]
-		imported_images.resize(Terrain3DRegion.TYPE_MAX)
-		imported_images[Terrain3DRegion.TYPE_HEIGHT] = rd["height_img"]
-		imported_images[Terrain3DRegion.TYPE_CONTROL] = rd["control_img"]
-		_terrain.data.import_images(imported_images, new_origin, 0.0, 1.0)
-		imported_count += 1
-		if imported_count % max_shift_imports_per_frame == 0:
-			await _scene_tree.process_frame
-	return imported_count
 
 static func _get_region_location(region: Variant) -> Vector2i:
 	if region == null:
