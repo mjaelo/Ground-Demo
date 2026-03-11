@@ -7,7 +7,7 @@ var enter_cost: float = 0.0 : set = set_enter_cost
 var travel_cost: float = 1.0 : set = set_travel_cost
 var navigation_layers: int = 1 : set = set_navigation_layers
 var template: NavigationMesh : set = set_template
-var terrain: Terrain3D
+var terrain: Node  # Optional: Terrain3D or null
 var player: Node3D
 var mesh_size := Vector3(256, 512, 256)
 var min_rebake_distance: float = 64.0

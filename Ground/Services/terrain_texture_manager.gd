@@ -5,12 +5,12 @@ const DEFAULT_TEXTURES_FILE := "res://assets/textures/texture_values.json"
 
 var loaded_textures: Dictionary = {}
 
-func initialize(terrain: Terrain3D, textures_file: String = DEFAULT_TEXTURES_FILE) -> void:
+## Load textures from JSON. No Terrain3D dependency.
+func load_textures(textures_file: String = DEFAULT_TEXTURES_FILE) -> void:
 	loaded_textures.clear()
 	var texture_defs := _load_texture_defs(textures_file)
 	for tex_info in texture_defs:
 		_load_texture(tex_info)
-		_register_terrain_texture(terrain, tex_info)
 
 static func _load_texture_defs(path: String) -> Array:
 	if not FileAccess.file_exists(path):
@@ -48,18 +48,3 @@ func _load_texture(tex_info: Dictionary) -> void:
 		loaded_textures[tex_name.to_lower()] = tex
 	else:
 		push_warning("TerrainTextureManager: Could not load texture at %s" % tex_path)
-
-func _register_terrain_texture(terrain: Terrain3D, tex_info: Dictionary) -> void:
-	var assets = terrain.assets
-	if assets == null:
-		push_error("TerrainTextureManager: Terrain3D has no assets resource")
-		return
-	var tex_name: String = str(tex_info.get("name", ""))
-	var tex_id: int = int(tex_info.get("id", 0))
-	var key = tex_name.to_lower()
-	if loaded_textures.has(key):
-		var ta = Terrain3DTextureAsset.new()
-		ta.name = tex_name
-		ta.id = tex_id
-		ta.set_albedo_texture(loaded_textures[key])
-		assets.set_texture(tex_id, ta)
