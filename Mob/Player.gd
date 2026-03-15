@@ -1,4 +1,5 @@
 extends CharacterBody3D
+class_name Player
 
 @export var MOVE_SPEED: float = 50.0
 @export var JUMP_SPEED: float = 2.0

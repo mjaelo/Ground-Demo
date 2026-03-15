@@ -1,22 +1,8 @@
-﻿extends RefCounted
+extends RefCounted
 class_name BiomeManager
 
-## Manages biome assignment using per-biome noise competition.
-##
-## Each biome has its own noise layer (same frequency, different seed).
-## The noise value is scaled by the biome's weight. At every world point
-## the biome with the highest score wins. Where two scores are close,
-## they blend smoothly. This produces organic blob-shaped regions with
-## no contour-line or grid artifacts.
-##
-## To add a new biome: add an entry to biome_definitions.json — that's it.
-
-const BIOME_VALUES_PATH := "res://assets/biomes/biome_values.json"
-
-# TODO add to Constants
-const  STEEP_THRESHOLD: float = 30.0
 # ── Biome registry ───────────────────────────────────────────────────
-var biomes: Array[BiomeData] = []
+var biomes := []
 
 # ── One noise source per biome (built automatically) ─────────────────
 var _noises: Array[FastNoiseLite] = []
@@ -34,66 +20,9 @@ func _init() -> void:
 
 # ── JSON loading ──────────────────────────────────────────────────────
 func _load_biomes_from_json() -> void:
-	if not FileAccess.file_exists(BIOME_VALUES_PATH):
-		push_warning("BiomeManager: biome file not found: %s — using defaults" % BIOME_VALUES_PATH)
-		_register_default_biomes()
-		return
-	var file := FileAccess.open(BIOME_VALUES_PATH, FileAccess.READ)
-	if file == null:
-		push_warning("BiomeManager: failed to open: %s — using defaults" % BIOME_VALUES_PATH)
-		_register_default_biomes()
-		return
-	var json_text := file.get_as_text()
-	file.close()
-	var json := JSON.new()
-	var err := json.parse(json_text)
-	if err != OK:
-		push_error("BiomeManager: JSON parse error in %s at line %d: %s" % [BIOME_VALUES_PATH, json.get_error_line(), json.get_error_message()])
-		_register_default_biomes()
-		return
-	var data: Variant = json.data
-	if typeof(data) != TYPE_DICTIONARY:
-		push_error("BiomeManager: expected JSON object in %s" % BIOME_VALUES_PATH)
-		_register_default_biomes()
-		return
-
-	var biome_array: Variant = data.get("biomes", [])
-	if typeof(biome_array) != TYPE_ARRAY or biome_array.size() == 0:
-		push_warning("BiomeManager: no biomes array in %s — using defaults" % BIOME_VALUES_PATH)
-		_register_default_biomes()
-		return
-
-	biomes.clear()
-	for entry in biome_array:
-		if typeof(entry) != TYPE_DICTIONARY:
-			continue
-		var b := BiomeData.from_dict(entry)
-		biomes.push_back(b)
-
+	biomes = Utils.load_from_json(GroundConstants.BIOME_VALUES_PATH, BiomeData, "biomes") as Array[BiomeData]
 	if biomes.is_empty():
-		push_warning("BiomeManager: parsed 0 valid biomes from %s — using defaults" % BIOME_VALUES_PATH)
-		_register_default_biomes()
-
-# ── Fallback default biome definitions ────────────────────────────────
-func _register_default_biomes() -> void:
-	var plains := BiomeData.new()
-	plains.biome_name = "Plains"
-	plains.height_curve = 4.0
-	plains.weight = 5.0
-
-	var swamp := BiomeData.new()
-	swamp.biome_name = "Swamp"
-	swamp.height_curve = 5.0
-	swamp.flat_texture_id = 2
-	swamp.steep_texture_id = 2
-	swamp.weight = 3.0
-
-	var mountain := BiomeData.new()
-	mountain.biome_name = "Mountain"
-	mountain.height_curve = 0.4
-	mountain.weight = 2.0
-
-	biomes = [plains, swamp, mountain]
+		push_warning("BiomeManager: parsed 0 valid biomes from %s" % GroundConstants.BIOME_VALUES_PATH)
 
 ## Call after modifying `biomes` at runtime.
 func _build_noises() -> void:
@@ -149,7 +78,6 @@ func get_encoded_control(world_x: float, world_z: float, slope_deg: float) -> fl
 			var total: float = bw[best_i] + bw[second_i]
 			var blend_t: float = bw[second_i] / total  # 0..0.5
 			# blend_t is how much of the secondary shows through.
-			# To avoid the "outline" artifact where Terrain3D's bilinear
 			# interpolation sees flipped base/overlay at neighboring pixels,
 			# always put the lower tex ID as base and higher as overlay.
 			# Invert the blend when the dominant biome has the higher ID.
@@ -218,7 +146,7 @@ func _biome_weights(world_x: float, world_z: float) -> Array[float]:
 
 # ── Control-map encoding ─────────────────────────────────────────────
 
-## Terrain3D control map bit layout (from the shader):
+## Terrain control map bit layout (from the shader): TODO is it needed?
 ##   Bit  0       : autoshader flag (0 = manual texture)
 ##   Bit  2       : hole
 ##   Bits 14-21   : blend value (0-255)
@@ -241,6 +169,6 @@ static func encode_control(base_id: int, overlay_id: int = -1, blend_byte: int =
 
 ## Returns the texture ID for a given slope angle in degrees.
 func get_texture_id(slope_deg: float, steep_texture_id, flat_texture_id) -> int:
-	if slope_deg > STEEP_THRESHOLD:
+	if slope_deg > GroundConstants.STEEP_THRESHOLD:
 		return steep_texture_id
 	return flat_texture_id

@@ -1,10 +1,10 @@
-﻿shader_type spatial;
+shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
-// Textures loaded from texture_values.json (rock=0, grass=1, mud=2)
-uniform sampler2D tex_rock  : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D tex_grass : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D tex_mud   : source_color, filter_linear_mipmap, repeat_enable;
+// Textures loaded from texture_values.json TODO do not hardcode these textures
+uniform sampler2D rock_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D grass_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D mud_tex : source_color, filter_linear_mipmap, repeat_enable;
 
 // Per-chunk splatmap: R = rock weight, G = grass weight, B = mud weight
 uniform sampler2D splatmap  : filter_linear, repeat_disable;
@@ -31,9 +31,9 @@ void fragment() {
 	// World-space tiling UV for the ground textures
 	vec2 tile_uv = UV * texture_scale;
 
-	vec3 rock_col  = texture(tex_rock,  tile_uv).rgb;
-	vec3 grass_col = texture(tex_grass, tile_uv).rgb;
-	vec3 mud_col   = texture(tex_mud,   tile_uv).rgb;
+	vec3 rock_col  = texture(rock_tex,  tile_uv).rgb;
+	vec3 grass_col = texture(grass_tex, tile_uv).rgb;
+	vec3 mud_col   = texture(mud_tex,   tile_uv).rgb;
 
 	ALBEDO = rock_col * weights.r + grass_col * weights.g + mud_col * weights.b;
 

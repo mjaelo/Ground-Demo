@@ -1,8 +1,9 @@
 extends Node
+class_name RuntimeNavigationBaker
 
 signal bake_finished
 
-var enabled: bool = true : set = set_enabled
+var is_enabled: bool = true : set = set_enabled
 var enter_cost: float = 0.0 : set = set_enter_cost
 var travel_cost: float = 1.0 : set = set_travel_cost
 var navigation_layers: int = 1 : set = set_navigation_layers
@@ -27,7 +28,7 @@ var _nav_region: NavigationRegion3D
 func _ready():
 	_nav_region = NavigationRegion3D.new()
 	_nav_region.navigation_layers = navigation_layers
-	_nav_region.enabled = enabled
+	_nav_region.enabled = is_enabled
 	_nav_region.enter_cost = enter_cost
 	_nav_region.travel_cost = travel_cost
 	
@@ -47,10 +48,10 @@ func _ready():
 
 
 func set_enabled(p_value: bool) -> void:
-	enabled = p_value
+	is_enabled = p_value
 	if _nav_region:
-		_nav_region.enabled = enabled
-	set_process(enabled and template)
+		_nav_region.enabled = is_enabled
+	set_process(is_enabled and template)
 
 
 func set_enter_cost(p_value: bool) -> void:
@@ -73,7 +74,7 @@ func set_navigation_layers(p_value: int) -> void:
 
 func set_template(p_value: NavigationMesh) -> void:
 	template = p_value
-	set_process(enabled and template)
+	set_process(is_enabled and template)
 	_update_map_cell_size()
 
 

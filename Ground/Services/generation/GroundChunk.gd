@@ -1,18 +1,12 @@
 ﻿extends RefCounted
-class_name CustomTerrainChunk
+class_name GroundChunk
 
 ## Represents a single terrain chunk as a MeshInstance3D with optional
 ## collision, using a custom shader for multi-texture blending.
-## Replaces Terrain3D's region system entirely.
-
-# ── LOD tiers (must match CustomTerrainManager constants) ─────────────
-const TIER_CLOSE := 0
-const TIER_MEDIUM := 1
-const TIER_FAR := 2
 
 # ── Per-chunk data ────────────────────────────────────────────────────
 var loc: Vector2i = Vector2i.ZERO
-var tier: int = TIER_FAR
+var lod_tier: int = GroundConstants.LOD_LEVELS.FAR
 var mesh_instance: MeshInstance3D = null
 var collision_body: StaticBody3D = null
 var heightmap: Image = null          # kept for world-shift reuse
@@ -21,23 +15,16 @@ var mesh_assets_spawned: bool = false
 
 ## Build the chunk node hierarchy and return the root MeshInstance3D.
 ## Call on the main thread after generating data on a worker.
-static func build_chunk(
-	p_loc: Vector2i,
-	p_tier: int,
-	region_size: int,
-	p_heightmap: Image,
-	p_splatmap: Image,
-	shader_material: ShaderMaterial,
-	add_collision: bool,
-) -> CustomTerrainChunk:
-	var chunk := CustomTerrainChunk.new()
+static func build_chunk( p_loc: Vector2i, p_lod_tier: GroundConstants.LOD_LEVELS, p_heightmap: Image, p_splatmap: Image, 
+shader_material: ShaderMaterial, add_collision: bool) -> GroundChunk:
+	var chunk := GroundChunk.new()
 	chunk.loc = p_loc
-	chunk.tier = p_tier
+	chunk.lod_tier = p_lod_tier
 	chunk.heightmap = p_heightmap
 	chunk.splatmap = p_splatmap
 
 	var res: int = p_heightmap.get_width()
-	var mesh := _build_mesh(p_heightmap, res, region_size)
+	var mesh := _build_mesh(p_heightmap, res)
 
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
@@ -47,10 +34,9 @@ static func build_chunk(
 	var mat: ShaderMaterial = shader_material.duplicate() as ShaderMaterial
 	var splat_tex := ImageTexture.create_from_image(p_splatmap)
 	mat.set_shader_parameter("splatmap", splat_tex)
-	mat.set_shader_parameter("region_size", float(region_size))
+	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
 	mi.material_override = mat
-
-	mi.position = Vector3(p_loc.x * region_size, 0, p_loc.y * region_size)
+	mi.position = Vector3(p_loc.x * GroundConstants.CHUNK_SIZE, 0, p_loc.y * GroundConstants.CHUNK_SIZE)
 	chunk.mesh_instance = mi
 
 	if add_collision:
@@ -79,7 +65,7 @@ func shift(offset: Vector3) -> void:
 
 # ── Mesh construction ─────────────────────────────────────────────────
 ## Builds an indexed mesh with smooth normals via generate_normals().
-static func _build_mesh(img: Image, res: int, region_size: int) -> ArrayMesh:
+static func _build_mesh(img: Image, res: int) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
@@ -91,7 +77,7 @@ static func _build_mesh(img: Image, res: int, region_size: int) -> ArrayMesh:
 			var v: float = float(y) * inv
 			var h: float = img.get_pixel(x, y).r
 			st.set_uv(Vector2(u, v))
-			st.add_vertex(Vector3(u * region_size, h, v * region_size))
+			st.add_vertex(Vector3(u * GroundConstants.CHUNK_SIZE, h, v * GroundConstants.CHUNK_SIZE))
 
 	# Add triangle indices
 	for y in range(res - 1):

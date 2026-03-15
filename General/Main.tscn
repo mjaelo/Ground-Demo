@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://domhm87hbhbg1" path="res://Mob/Player.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://bb2lp50sjndus" path="res://General/Environment.tscn" id="3"]
-[ext_resource type="PackedScene" uid="uid://byf3ugq8cm3eo" path="res://Ground/Ground.tscn" id="4_puha4"]
+[ext_resource type="PackedScene" path="res://Ground/Ground.tscn" id="4_puha4"]
 [ext_resource type="PackedScene" uid="uid://d2jihfohphuue" path="res://UI/UI.tscn" id="5"]
 
 [node name="Main" type="Node" unique_id=487858458]

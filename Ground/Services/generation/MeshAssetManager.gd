@@ -1,20 +1,15 @@
 extends RefCounted
-class_name MeshPlacementManager
+class_name MeshAssetManager
 # TODO house scenes are not rotated
 
 # Distance between placed foliage instances; lower = denser.
 var foliage_step: int = 2
 var empty_chance: float = 0.3 # Probability (0-1) that a coordinate is left empty (no asset placed)
 
-const MESH_ASSETS_PATH: String = "res://assets/mesh_assets/"
-# Per-mesh placement controls loaded from JSON file.
-var placement_rules_file: String = MESH_ASSETS_PATH + "decor_values.json"
-
 # asset_name (lowercase) -> PackedScene
 var _scene_assets: Dictionary = {}
 
-var _placement_layers: Array[DecorData] = []
-# Key: Vector3i(loc.x, loc.y, asset_hash) -> Array[Node]
+var _placement_layers := []
 var _scene_nodes: Dictionary = {}
 
 func initialize(_terrain: Node) -> void:
@@ -22,15 +17,15 @@ func initialize(_terrain: Node) -> void:
 	_load_placement_rules()
 
 func _load_assets_from_disk() -> void:
-	var dir := DirAccess.open(MESH_ASSETS_PATH)
+	var dir := DirAccess.open(GroundConstants.MESH_ASSETS_PATH)
 	if dir == null:
-		push_error("Cannot open mesh assets directory: %s" % MESH_ASSETS_PATH)
+		push_error("Cannot open mesh assets directory: %s" % GroundConstants.MESH_ASSETS_PATH)
 		return
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
 	while file_name != "":
 		if not dir.current_is_dir() and file_name.get_extension().to_lower() == "tscn":
-			var scene: PackedScene = load(MESH_ASSETS_PATH + file_name)
+			var scene: PackedScene = load(GroundConstants.MESH_ASSETS_PATH + file_name)
 			if scene:
 				var key: String = file_name.get_basename().to_lower()
 				_scene_assets[key] = scene
@@ -38,37 +33,11 @@ func _load_assets_from_disk() -> void:
 	dir.list_dir_end()
 
 func _load_placement_rules() -> void:
-	if placement_rules_file.is_empty():
-		return
-	if not FileAccess.file_exists(placement_rules_file):
-		push_warning("Placement rules file not found: %s" % placement_rules_file)
-		return
-	var file := FileAccess.open(placement_rules_file, FileAccess.READ)
-	if file == null:
-		push_error("Failed to open placement rules: %s" % placement_rules_file)
-		return
-	var json_text := file.get_as_text()
-	file.close()
-	var json := JSON.new()
-	var error := json.parse(json_text)
-	if error != OK:
-		push_error("JSON parse error in %s at line %d: %s" % [placement_rules_file, json.get_error_line(), json.get_error_message()])
-		return
-	var data: Variant = json.data
-	if typeof(data) != TYPE_DICTIONARY:
-		push_error("Expected JSON object in placement rules file")
-		return
-	var decors_raw: Variant = data.get("decors", [])
-	if typeof(decors_raw) != TYPE_ARRAY:
-		push_error("Expected 'layers' array in placement rules")
-		return
-	for decor_raw in decors_raw:
-		if typeof(decor_raw) == TYPE_DICTIONARY:
-			var decor := DecorData.from_dict(decor_raw)
-			var key: String = decor.asset_name.to_lower()
-			if not _scene_assets.has(key):
-				push_warning("placement_rules: no loaded scene matches name '%s', layer will be skipped" % decor.asset_name)
-			_placement_layers.push_back(decor)
+	_placement_layers = Utils.load_from_json(GroundConstants.DECOR_VALUES_FILE, DecorData, "decors") as Array[DecorData]
+	for decor in _placement_layers:
+		var key: String = decor.asset_name.to_lower()
+		if not _scene_assets.has(key):
+			push_warning("placement_rules: no loaded scene matches name '%s', layer will be skipped" % decor.asset_name)
 
 # Returns a Dictionary of asset_name (String) -> Array[Transform3D].
 func generate_transforms(region_origin_m: Vector3, region_size: int, height_sampler: Callable, normal_sampler: Callable, biome_manager: BiomeManager = null) -> Dictionary:
@@ -106,7 +75,7 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 					continue
 				var pos_x := x + origin.x
 				var pos_z := z + origin.z
-				var filtered_layers = filter_layers_by_biome(large_layers, pos_x, pos_z,biome_manager)
+				var filtered_layers := filter_layers_by_biome(large_layers, pos_x, pos_z,biome_manager)
 				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, filtered_layers, height_sampler, normal_sampler)
 
 	# Pass 2: small assets, skipping coords blocked by large assets.
@@ -121,7 +90,7 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 					continue
 				var pos_x := x + origin.x
 				var pos_z := z + origin.z
-				var filtered_layers = filter_layers_by_biome(small_layers, pos_x, pos_z,biome_manager)
+				var filtered_layers := filter_layers_by_biome(small_layers, pos_x, pos_z,biome_manager)
 				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, filtered_layers, height_sampler, normal_sampler)
 
 	return transforms_by_name

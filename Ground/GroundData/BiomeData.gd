@@ -6,7 +6,7 @@ var biome_name: String = ""
 ## Height curve exponent applied to the base noise.
 ## Higher values = flatter/lower terrain; lower values = taller peaks.
 var height_curve: float = 2.0
-## Texture ID used on flat ground (slope below steep_slope_threshold).
+## Texture ID used on flat ground cou(slope below steep_slope_threshold).
 var flat_texture_id: int = 1  # Grass
 ## Texture ID used on steep slopes (slope above steep_slope_threshold).
 var steep_texture_id: int = 0  # Rock

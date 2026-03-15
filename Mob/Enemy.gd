@@ -1,4 +1,5 @@
 extends CharacterBody3D
+class_name Enemy
 
 const RETARGET_COOLDOWN: float = 1.0
 
