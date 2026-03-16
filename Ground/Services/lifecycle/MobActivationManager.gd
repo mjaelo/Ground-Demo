@@ -1,7 +1,7 @@
 extends RefCounted
 class_name MobActivationManager
 
-## Handles player spawning (on initial load) and enemy activation.
+## Handles player spawning (on initial load) and enemy activation. TODO move into Mob folder?
 
 var _enemy: Enemy = null
 var _player: Player = null

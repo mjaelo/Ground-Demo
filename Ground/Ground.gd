@@ -10,23 +10,21 @@ class_name Ground
 var _noise := FastNoiseLite.new()
 
 # ── Node references ──────────────────────────────────────────────────
-@onready var player: CharacterBody3D = get_node_or_null("../Player")
-@onready var enemy: CharacterBody3D = get_node_or_null("Enemy")
-@onready var nav_baker: RuntimeNavigationBaker = get_node_or_null("NavBaker")
-@onready var ui: Control = get_node_or_null("../UI")
+@onready var main: Main = get_parent()
+@onready var nav_baker: RuntimeNavigationBaker = $NavBaker
 
 # ── Managers ──────────────────────────────────────────────────────────
 var _mesh_placement_manager: MeshAssetManager
 var _biome_manager: BiomeManager
 var _terrain_manager: GroundManager
-var _mob_activation_manager: MobActivationManager
+var _mob_activation_manager: MobActivationManager # TODO should be placed in Mob directory?
 
 # ── Lifecycle ─────────────────────────────────────────────────────────
 
 func _ready() -> void:
+	await main.ready
 	if Engine.is_editor_hint():
 		return
-	_setup_ui_and_player()
 	_create_managers()
 
 func _process(delta: float) -> void:
@@ -36,14 +34,6 @@ func _process(delta: float) -> void:
 		_terrain_manager.tick(delta)
 
 # ── Setup ─────────────────────────────────────────────────────────────
-
-func _setup_ui_and_player() -> void:
-	if ui and player:
-		ui.player = player
-		NavigationServer3D.set_debug_enabled(true)
-		player.gravity_enabled = false
-		player.collision_enabled = false
-		await get_tree().process_frame
 
 func _create_managers() -> void:
 	_noise.frequency = GroundConstants.NOISE_FREQUENCY
@@ -56,10 +46,10 @@ func _create_managers() -> void:
 	_terrain_manager = GroundManager.new()
 	_terrain_manager.load_textures()
 	_biome_manager.set_texture_count(_terrain_manager.loaded_textures.size())
-	_terrain_manager.initialize(self, player)
+	_terrain_manager.initialize(self, main.player)
 
 	_mob_activation_manager = MobActivationManager.new()
-	_mob_activation_manager.initialize(enemy, player, nav_baker, _terrain_manager)
+	_mob_activation_manager.initialize(main.enemy, main.player, nav_baker, _terrain_manager)
 
 	# When the initial bulk load finishes, spawn the player and activate mobs
 	_terrain_manager.initial_load_complete.connect(_mob_activation_manager.on_initial_load_complete)

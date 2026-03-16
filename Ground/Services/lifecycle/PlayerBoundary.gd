@@ -2,8 +2,7 @@
 class_name PlayerBoundary
 
 ## Prevents the player from walking into chunks that lack collision.
-## Instead of a safety floor, the player is simply blocked from crossing
-## into any chunk that has not yet generated collision geometry.
+## Instead of a safety floor, the player is simply blocked from crossing into any chunk that has not yet generated collision geometry.
 
 var _player: Player = null
 var _chunks: Dictionary  # reference to GroundManager._chunks
@@ -19,19 +18,20 @@ func update() -> void:
 		return
 
 	var ppos: Vector3 = _player.global_transform.origin
-	var loc := GroundConstants.world_pos_to_chunk_loc(ppos)
+	var loc := GroundUtils.world_pos_to_chunk_loc(ppos)
+	var chunk: GroundChunk = _chunks.get(loc, null)
 
 	# Current chunk already has collision — nothing to block.
-	if _chunks.has(loc) and _chunks[loc].collision_body != null:
+	if chunk and chunk.collision_body != null:
 		return
 
 	# Player is in a chunk without collision. Push them back to the nearest
 	# neighbouring chunk that DOES have collision.
-	var cs: float = float(GroundConstants.CHUNK_SIZE)
-	var chunk_min_x: float = loc.x * cs
-	var chunk_max_x: float = chunk_min_x + cs
-	var chunk_min_z: float = loc.y * cs
-	var chunk_max_z: float = chunk_min_z + cs
+	var chunk_size: float = float(GroundConstants.CHUNK_SIZE)
+	var chunk_min_x: float = loc.x * chunk_size
+	var chunk_max_x: float = chunk_min_x + chunk_size
+	var chunk_min_z: float = loc.y * chunk_size
+	var chunk_max_z: float = chunk_min_z + chunk_size
 	var margin: float = 0.5
 
 	var new_pos := ppos
@@ -71,11 +71,7 @@ func update() -> void:
 
 	# Absolute fallback: no neighbouring chunk has collision either.
 	# Use heightmap floor if available so the player doesn't fall through.
-	var floor_y: float
-	if _chunks.has(loc) and _chunks[loc].heightmap:
-		floor_y = GroundConstants.height_from_heightmap(_chunks[loc].heightmap, ppos, loc)
-	else:
-		floor_y = ppos.y
+	var floor_y: float = GroundUtils.height_from_heightmap(chunk.heightmap, ppos, loc) if chunk and chunk.heightmap else ppos.y
 	if ppos.y < floor_y + 0.5:
 		_player.global_transform.origin.y = floor_y + 0.5
 		if _player.velocity.y < 0:

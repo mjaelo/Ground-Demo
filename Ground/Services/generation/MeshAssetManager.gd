@@ -2,10 +2,6 @@ extends RefCounted
 class_name MeshAssetManager
 # TODO house scenes are not rotated
 
-# Distance between placed foliage instances; lower = denser.
-var foliage_step: int = GroundConstants.FOLIAGE_STEP
-var empty_chance: float = GroundConstants.FOLIAGE_EMPTY_CHANCE
-
 # asset_name (lowercase) -> PackedScene
 var _scene_assets: Dictionary = {}
 
@@ -41,7 +37,7 @@ func _load_placement_rules() -> void:
 
 # Returns a Dictionary of asset_name (String) -> Array[Transform3D].
 func generate_transforms(region_origin_m: Vector3, region_size: int, height_sampler: Callable, normal_sampler: Callable, biome_manager: BiomeManager = null) -> Dictionary:
-	var step: int = max(1, int(foliage_step))
+	var step: int = max(1, GroundConstants.DECOR_STEP)
 	var origin: Vector3 = region_origin_m + Vector3(-region_size * 0.5, 0, -region_size * 0.5)
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
@@ -71,7 +67,7 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 				var gz: int = z / step
 				if blocked.has(Vector2i(gx, gz)):
 					continue
-				if rng.randf() < empty_chance:
+				if rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
 					continue
 				var pos_x := x + origin.x
 				var pos_z := z + origin.z
@@ -86,7 +82,7 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 				var gz: int = z / step
 				if blocked.has(Vector2i(gx, gz)):
 					continue
-				if rng.randf() < empty_chance:
+				if rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
 					continue
 				var pos_x := x + origin.x
 				var pos_z := z + origin.z

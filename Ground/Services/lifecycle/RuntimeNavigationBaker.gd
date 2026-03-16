@@ -9,7 +9,7 @@ var travel_cost: float = 1.0 : set = set_travel_cost
 var navigation_layers: int = 1 : set = set_navigation_layers
 var template: NavigationMesh : set = set_template
 var terrain: Node
-var player: Node3D
+var player: Player
 var mesh_size := Vector3(256, 512, 256)
 var min_rebake_distance: float = 64.0
 var bake_cooldown: float = 1.0
@@ -104,7 +104,7 @@ func _process(p_delta: float) -> void:
 		return
 	
 	var track_pos := player.global_position
-	if player is CharacterBody3D:
+	if player:
 		# Center on where the player is likely _going to be_:
 		track_pos += player.velocity * bake_cooldown
 	

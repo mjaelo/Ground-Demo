@@ -58,50 +58,6 @@ func get_biome_at(world_x: float, world_z: float) -> BiomeData:
 			best_i = i
 	return biomes[best_i]
 
-## Returns a fully encoded control-map float for a world position + slope.
-func get_encoded_control(world_x: float, world_z: float, slope_deg: float) -> float:
-	var bw := _biome_weights(world_x, world_z)
-
-	# Find the two strongest biome contributions
-	var best_i := 0
-	var second_i := -1
-	for i in range(1, bw.size()):
-		if bw[i] > bw[best_i]:
-			second_i = best_i
-			best_i = i
-		elif second_i < 0 or bw[i] > bw[second_i]:
-			second_i = i
-
-	var primary: BiomeData = biomes[best_i]
-	var base_tex: int = get_texture_id(slope_deg, primary.steep_texture_id, primary.flat_texture_id)
-
-	# Blend with secondary biome if it has significant influence
-	if second_i >= 0 and bw[second_i] > 0.01:
-		var secondary: BiomeData = biomes[second_i]
-		var over_tex: int = get_texture_id(slope_deg, secondary.steep_texture_id, secondary.flat_texture_id)
-		if over_tex != base_tex:
-			var total: float = bw[best_i] + bw[second_i]
-			var blend_t: float = bw[second_i] / total  # 0..0.5
-			# blend_t is how much of the secondary shows through.
-			# interpolation sees flipped base/overlay at neighboring pixels,
-			# always put the lower tex ID as base and higher as overlay.
-			# Invert the blend when the dominant biome has the higher ID.
-			var lo: int = min(base_tex, over_tex)
-			var hi: int = max(base_tex, over_tex)
-			var lo_amount: float
-			if base_tex == lo:
-				# Primary is low ID → secondary (hi) shows through at blend_t
-				lo_amount = 1.0 - blend_t
-			else:
-				# Primary is high ID → low ID shows through at blend_t
-				lo_amount = blend_t
-			# blend_byte = how much of the overlay (hi) to show.
-			# 0 = all base (lo), 255 = all overlay (hi).
-			var blend_byte: int = int(clamp((1.0 - lo_amount) * 255.0, 0.0, 255.0))
-			return encode_control(lo, hi, blend_byte)
-
-	return encode_control(base_tex)
-
 # ── Internal: per-biome noise competition ────────────────────────────
 
 ## Returns per-biome weights that sum to 1.0 (at most two non-zero).

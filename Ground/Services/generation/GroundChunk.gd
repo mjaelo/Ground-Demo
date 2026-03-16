@@ -1,30 +1,22 @@
 ﻿extends RefCounted
 class_name GroundChunk
 
-## Represents a single terrain chunk as a MeshInstance3D with optional
-## collision, using a custom shader for multi-texture blending.
+## Scene-node wrapper for a terrain chunk. Holds the MeshInstance3D,
+## optional collision body, and a reference to the underlying ChunkData.
 
-# ── Per-chunk data ────────────────────────────────────────────────────
-var loc: Vector2i = Vector2i.ZERO
-var lod_tier: int = GroundConstants.LOD_LEVELS.FAR
+# ── Per-chunk references ──────────────────────────────────────────────
+var data: ChunkData = null # TODO i dont think Chunk needs ChunkData field, its only needed for initialization.
 var mesh_instance: MeshInstance3D = null
 var collision_body: StaticBody3D = null
-var heightmap: Image = null          # kept for height sampling
-var splatmap: Image = null           # R=weight0, G=weight1, B=weight2
-var mesh_assets_spawned: bool = false
 
-## Build the chunk node hierarchy and return the root MeshInstance3D.
+## Build the chunk node hierarchy from a ChunkData.
 ## Call on the main thread after generating data on a worker.
-static func build_chunk( p_loc: Vector2i, p_lod_tier: GroundConstants.LOD_LEVELS, p_heightmap: Image, p_splatmap: Image, 
-shader_material: ShaderMaterial, add_collision: bool) -> GroundChunk:
+static func build_chunk(p_data: ChunkData, shader_material: ShaderMaterial, add_collision: bool) -> GroundChunk:
 	var chunk := GroundChunk.new()
-	chunk.loc = p_loc
-	chunk.lod_tier = p_lod_tier
-	chunk.heightmap = p_heightmap
-	chunk.splatmap = p_splatmap
+	chunk.data = p_data
 
-	var res: int = p_heightmap.get_width()
-	var mesh := _build_mesh(p_heightmap, res)
+	var res: int = p_data.heightmap.get_width()
+	var mesh := _build_mesh(p_data.heightmap, res)
 
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
@@ -32,15 +24,15 @@ shader_material: ShaderMaterial, add_collision: bool) -> GroundChunk:
 
 	# Create per-instance material with splatmap texture
 	var mat: ShaderMaterial = shader_material.duplicate() as ShaderMaterial
-	var splat_tex := ImageTexture.create_from_image(p_splatmap)
+	var splat_tex := ImageTexture.create_from_image(p_data.splatmap)
 	mat.set_shader_parameter("splatmap", splat_tex)
 	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
 	mi.material_override = mat
-	mi.position = Vector3(p_loc.x * GroundConstants.CHUNK_SIZE, 0, p_loc.y * GroundConstants.CHUNK_SIZE)
+	mi.position = Vector3(p_data.loc.x * GroundConstants.CHUNK_SIZE, 0, p_data.loc.y * GroundConstants.CHUNK_SIZE)
 
 	# Set visibility range so the renderer auto-culls distant chunks
 	var vis_end: float = 0.0
-	match p_lod_tier:
+	match p_data.lod_tier:
 		GroundConstants.LOD_LEVELS.FAR:
 			vis_end = GroundConstants.far_radius * GroundConstants.CHUNK_SIZE * 1.1
 		GroundConstants.LOD_LEVELS.MEDIUM:
@@ -72,6 +64,22 @@ func destroy() -> void:
 	mesh_instance = null
 	collision_body = null
 
+# ── Convenience accessors (delegate to data) ──────────────────────────
+
+var loc: Vector2i:
+	get: return data.loc if data else Vector2i.ZERO
+
+var lod_tier: int:
+	get: return data.lod_tier if data else GroundConstants.LOD_LEVELS.FAR
+
+var heightmap: Image:
+	get: return data.heightmap if data else null
+
+var mesh_assets_spawned: bool:
+	get: return data.decor_spawned if data else false
+	set(value):
+		if data:
+			data.decor_spawned = value
 
 # ── Mesh construction ─────────────────────────────────────────────────
 ## Builds an indexed mesh with smooth normals via generate_normals().
