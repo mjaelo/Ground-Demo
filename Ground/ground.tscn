@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dt4xak0xv0xyt"]
 
 [ext_resource type="Script" uid="uid://dakis6gu8b7nm" path="res://Ground/Ground.gd" id="1_xuh48"]
-[ext_resource type="Script" uid="uid://dsutcawhs8sxs" path="res://Ground/Services/generation/EditorPreview.gd" id="2_8s517"]
+[ext_resource type="Script" uid="uid://dsutcawhs8sxs" path="res://Ground/Services/EditorPreview.gd" id="2_8s517"]
 [ext_resource type="Script" uid="uid://brh8x1wnycrl5" path="res://Ground/Services/lifecycle/RuntimeNavigationBaker.gd" id="2_rmege"]
 [ext_resource type="PackedScene" uid="uid://di5fovhcyd7re" path="res://Mob/Enemy.tscn" id="3_wwltb"]
 

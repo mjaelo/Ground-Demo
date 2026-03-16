@@ -3,6 +3,11 @@ class_name BiomeManager
 
 # ── Biome registry ───────────────────────────────────────────────────
 var biomes := []
+## Number of terrain textures loaded (from texture_values.json).
+var texture_count: int = 3
+
+func set_texture_count(count: int) -> void:
+	texture_count = count
 
 # ── One noise source per biome (built automatically) ─────────────────
 var _noises: Array[FastNoiseLite] = []
