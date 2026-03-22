@@ -33,8 +33,7 @@ func _build_house() -> void:
 	# ---- clear children ----------------------------------------------------
 	for c in get_children():
 		c.queue_free()
-	if is_inside_tree():
-		await get_tree().process_frame
+	await get_tree().process_frame
 
 	# ---- RNG ---------------------------------------------------------------
 	var rng := RandomNumberGenerator.new()
@@ -42,18 +41,18 @@ func _build_house() -> void:
 	rng.seed = hash(str(int(p.x * 10.0), "_", int(p.y * 10.0), "_", int(p.z * 10.0), "_", _build_count))
 
 	# ---- colour palettes (medieval stone / plaster / wood) -----------------
-	var wall_cols = [
+	var wall_cols := [
 		Color(0.72, 0.65, 0.55), 
 #		Color(0.62, 0.58, 0.50),
 		Color(0.59, 0.499, 0.425, 1.0), 
 #		Color(0.55, 0.50, 0.44),
 		Color(0.678, 0.62, 0.486, 1.0),
 	]
-	var timber_cols = [
+	var timber_cols := [
 		Color(0.30, 0.18, 0.10), 
 		Color(0.25, 0.15, 0.08),
 	]
-	var roof_cols = [
+	var roof_cols := [
 		Color(0.28, 0.18, 0.12),
 		Color(0.42, 0.28, 0.18),
 		Color(0.42, 0.262, 0.227, 1.0), 
@@ -147,7 +146,11 @@ func _build_house() -> void:
 	var up = ground_normal.normalized()
 	var align_ok = up.length() > 0.9 and abs(up.dot(Vector3.UP)) < 0.999
 	if align_ok:
-		var ref = abs(up.dot(Vector3.FORWARD)) < 0.99 and Vector3.FORWARD or Vector3.RIGHT
+		var ref: Vector3
+		if abs(up.dot(Vector3.FORWARD)) < 0.99:
+			ref = Vector3.FORWARD
+		else:
+			ref = Vector3.RIGHT
 		var x_axis = up.cross(ref).normalized()
 		if x_axis.length() < 0.1:
 			x_axis = up.cross(Vector3.RIGHT).normalized()

@@ -10,7 +10,7 @@ class_name Ground
 var _noise := FastNoiseLite.new()
 
 # ── Node references ──────────────────────────────────────────────────
-@onready var main: Main = get_parent()
+var main: Main = null
 @onready var nav_baker: RuntimeNavigationBaker = $NavBaker
 
 # ── Managers ──────────────────────────────────────────────────────────
@@ -24,6 +24,7 @@ var _mob_activation_manager: MobActivationManager # TODO should be placed in Mob
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
+	main = get_parent() as Main
 	await main.ready
 	_create_managers()
 
@@ -45,7 +46,6 @@ func _create_managers() -> void:
 
 	_terrain_manager = GroundManager.new()
 	_terrain_manager.load_textures()
-	_biome_manager.set_texture_count(_terrain_manager.loaded_textures.size())
 	_terrain_manager.initialize(self, main.player)
 
 	_mob_activation_manager = MobActivationManager.new()

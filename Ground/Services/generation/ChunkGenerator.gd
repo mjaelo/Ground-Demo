@@ -14,13 +14,8 @@ func initialize(noise: FastNoiseLite, biome_manager: BiomeManager) -> void:
 ## Mirrors the logic inside _generate_heightmap_and_splatmap so that
 ## edge pixels can look one step beyond the chunk boundary.
 func _sample_height(world_x: float, world_z: float, height_range: float) -> float:
-	var bw: Array[float] = _biome_manager._biome_weights(world_x, world_z)
-	var exponent: float = 0.0
-	for i in bw.size():
-		exponent += _biome_manager.biomes[i].get_height_exponent() * bw[i]
-	var n: float = (_noise.get_noise_2d(world_x, world_z) + 1.0) * 0.5
-	n = pow(n, exponent)
-	return GroundConstants.height_min + n * height_range
+	var h: float = _biome_manager.sample_height(_noise, world_x, world_z)
+	return GroundConstants.height_min + h * height_range
 
 ## Returns a ChunkData populated with heightmap, splatmap, and dominant biome.
 ## Safe to call from a worker thread.
@@ -60,40 +55,35 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 		var world_x: float = float(x) * inv_res * chunk_size + base_x
 		for y in range(resolution):
 			var world_z: float = float(y) * inv_res * chunk_size + base_z
-			# Get biome weights for this pixel
 			var biome_weights: Array[float] = _biome_manager._biome_weights(world_x, world_z)
 			cached_biome_weights[x * resolution + y] = biome_weights
-			# Accumulate biome weights for dominant biome detection
 			for i in range(biome_count):
 				biome_weight_totals[i] += biome_weights[i]
-			# Compute weighted height curve
-			var height_curve_weighted: float = 0.0
-			for i in range(biome_count):
-				height_curve_weighted += _biome_manager.biomes[i].get_height_exponent() * biome_weights[i]
-			# Generate height value using noise and curve
-			var noise_val: float = _noise.get_noise_2d(world_x, world_z)
-			noise_val = (noise_val + 1.0) * 0.5
-			noise_val = pow(noise_val, height_curve_weighted)
-			heightmap.set_pixel(x, y, Color(GroundConstants.height_min + noise_val * height_range, 0, 0, 1))
+			# Height: per-biome pow() blended with wide margin
+			var h: float = _biome_manager.sample_height(_noise, world_x, world_z)
+			heightmap.set_pixel(x, y, Color(GroundConstants.height_min + h * height_range, 0, 0, 1))
 
 	# --- Determine dominant biome for the whole chunk ---
 	var dominant_biome_idx: int = biome_weight_totals.find(biome_weight_totals.max())
 	data.dominant_biome = _biome_manager.biomes[dominant_biome_idx]
 
 	# --- Splatmap generation ---
-	# Splatmap encoding: R = tex_index_a / 255, G = tex_index_b / 255, B = blend (0=all A, 1=all B)
+	# Weight-map encoding: each RGBA channel = weight for one texture layer.
+	# R = texture 0, G = texture 1, B = texture 2, A = texture 3.
+	# Weights are normalised to sum to 1.0 so the shader can blend directly.
 	if data.lod_tier == GroundConstants.LOD_LEVELS.FAR:
 		# For far LOD, use LOD texture IDs for splatmap coloring
 		for x in range(resolution):
 			for y in range(resolution):
 				var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
-				var tex_weights: Dictionary = {}  # texture_id -> accumulated weight
+				var tex_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
 				for i in range(biome_count):
 					if biome_weights[i] < 0.01:
 						continue
-					var tex_id: int = _biome_manager.biomes[i].get_lod_texture_id()
-					tex_weights[tex_id] = tex_weights.get(tex_id, 0.0) + biome_weights[i]
-				splatmap.set_pixel(x, y, _encode_splatmap_pixel(tex_weights))
+					var tex_id: int = (_biome_manager.biomes[i] as BiomeData).lod_texture_id
+					if tex_id >= 0 and tex_id < 4:
+						tex_weights[tex_id] += biome_weights[i]
+				splatmap.set_pixel(x, y, _encode_weight_pixel(tex_weights))
 	else:
 		# For close/medium LOD, use slope to blend between flat/steep textures
 		var cell_size: float = float(chunk_size) / float(resolution - 1)
@@ -124,56 +114,36 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 				var steep_factor: float = clampf((slope - slope_lo) / (slope_hi - slope_lo), 0.0, 1.0)
 				steep_factor = steep_factor * steep_factor * (3.0 - 2.0 * steep_factor) # smoothstep
 				var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
-				var tex_weights: Dictionary = {}  # texture_id -> accumulated weight
+				var tex_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
 				for i in range(biome_count):
 					var biome_weight := biome_weights[i]
 					if biome_weight < 0.01:
 						continue
-					var biome_data: BiomeData = _biome_manager.biomes[i]
+					var biome_data: BiomeData = (_biome_manager.biomes[i] as BiomeData)
 					var flat_w: float = biome_weight * (1.0 - steep_factor)
 					var steep_w: float = biome_weight * steep_factor
-					if flat_w > 0.001:
-						tex_weights[biome_data.flat_texture_id] = tex_weights.get(biome_data.flat_texture_id, 0.0) + flat_w
-					if steep_w > 0.001:
-						tex_weights[biome_data.steep_texture_id] = tex_weights.get(biome_data.steep_texture_id, 0.0) + steep_w
-				splatmap.set_pixel(x, y, _encode_splatmap_pixel(tex_weights))
+					if flat_w > 0.001 and biome_data.flat_texture_id >= 0 and biome_data.flat_texture_id < 4:
+						tex_weights[biome_data.flat_texture_id] += flat_w
+					if steep_w > 0.001 and biome_data.steep_texture_id >= 0 and biome_data.steep_texture_id < 4:
+						tex_weights[biome_data.steep_texture_id] += steep_w
+				splatmap.set_pixel(x, y, _encode_weight_pixel(tex_weights))
 
 	# --- Assign generated images to chunk data ---
 	data.heightmap = heightmap
 	data.splatmap = splatmap
 
-## Encode a {texture_id: weight} dictionary into a splatmap Color.
-## Picks the two highest-weight textures and encodes:
-##   R = (tex_index_a + 1) / 255.0,  G = (tex_index_b + 1) / 255.0,  B = blend (0 = all A, 1 = all B)
-## IDs are stored +1 so that texture index 0 maps to byte 1 (avoiding all-zero pixels).
-## The shader subtracts 1 when decoding.
-static func _encode_splatmap_pixel(tex_weights: Dictionary) -> Color:
-	if tex_weights.is_empty():
-		# default: Grass (id 1) → encoded as (1+1)/255 = 2/255
-		return Color(2.0 / 255.0, 2.0 / 255.0, 0.0, 1.0)
-
-	# Find best and second-best texture by weight
-	var best_id: int = -1
-	var best_w: float = -1.0
-	var second_id: int = -1
-	var second_w: float = -1.0
-	for tex_id in tex_weights:
-		var w: float = tex_weights[tex_id]
-		if w > best_w:
-			second_id = best_id
-			second_w = best_w
-			best_id = tex_id
-			best_w = w
-		elif w > second_w:
-			second_id = tex_id
-			second_w = w
-
-	if second_id < 0 or second_w <= 0.0:
-		# Single texture, no blending
-		var enc: float = float(best_id + 1) / 255.0
-		return Color(enc, enc, 0.0, 1.0)
-
-	# blend = proportion of second texture: second / (best + second)
-	var total: float = best_w + second_w
-	var blend: float = second_w / total
-	return Color(float(best_id + 1) / 255.0, float(second_id + 1) / 255.0, blend, 1.0)
+## Encode per-texture weights into an RGBA Color.
+## tex_weights[0] → R, tex_weights[1] → G, tex_weights[2] → B, tex_weights[3] → A.
+## Weights are normalised so they sum to 1.0.
+static func _encode_weight_pixel(tex_weights: Array[float]) -> Color:
+	var total: float = tex_weights[0] + tex_weights[1] + tex_weights[2] + tex_weights[3]
+	if total <= 0.0:
+		# Fallback: 100% texture 1 (Grass)
+		return Color(0.0, 1.0, 0.0, 0.0)
+	var inv: float = 1.0 / total
+	return Color(
+		tex_weights[0] * inv,
+		tex_weights[1] * inv,
+		tex_weights[2] * inv,
+		tex_weights[3] * inv
+	)

@@ -58,9 +58,7 @@ func initialize(parent: Ground, player: CharacterBody3D) -> void:
 # ── Terrain sampling ─────────────────────────────────────────────────
 
 func sample_height(world_x: float, world_z: float) -> float:
-	var h := _noise.get_noise_2d(world_x, world_z)
-	h = (h + 1.0) * 0.5
-	h = pow(h, _biome_manager.get_height_exponent(world_x, world_z))
+	var h: float = _biome_manager.sample_height(_noise, world_x, world_z)
 	return GroundConstants.height_min + h * (GroundConstants.height_max - GroundConstants.height_min)
 
 func sample_normal(world_x: float, world_z: float) -> Vector3:
@@ -194,7 +192,7 @@ func _update_visible_chunks() -> void:
 
 func _start_thread(thread_dict: Dictionary, loc: Vector2i, lod_tier: int) -> void:
 	var thread := Thread.new()
-	thread_dict[loc] = thread # TODO 
+	thread_dict[loc] = thread
 	if thread.start(_chunk_generator.generate_chunk_data.bind(loc, lod_tier)) != OK:
 		thread_dict.erase(loc)
 
@@ -321,6 +319,7 @@ func _build_shader_material() -> ShaderMaterial:
 
 	mat.set_shader_parameter("texture_scale", GroundConstants.TEXTURE_SCALE)
 	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
+	mat.set_shader_parameter("texture_count", loaded_textures.size())
 	return mat
 
 ## Packs every loaded terrain texture into a single Texture2DArray.
@@ -339,9 +338,9 @@ func _build_texture_array() -> Texture2DArray:
 		var img := Image.new()
 		# Convert res:// path to the project file system path for raw loading
 		var path: String = tex_data.texture_path
-		var err := img.load(ProjectSettings.globalize_path(path))
-		if err != OK:
-			push_warning("GroundManager: Could not load raw image '%s' (error %d), using placeholder." % [path, err])
+		var load_err := img.load(ProjectSettings.globalize_path(path))
+		if load_err != OK:
+			push_warning("GroundManager: Could not load raw image '%s' (error %d), using placeholder." % [path, load_err])
 			var sz := common_size if common_size != Vector2i.ZERO else Vector2i(256, 256)
 			img = Image.create_empty(sz.x, sz.y, false, Image.FORMAT_RGBA8)
 			img.fill(Color.MAGENTA)
@@ -363,9 +362,9 @@ func _build_texture_array() -> Texture2DArray:
 		return null
 
 	var tex_arr := Texture2DArray.new()
-	var err := tex_arr.create_from_images(images)
-	if err != OK:
-		push_error("GroundManager: Texture2DArray creation failed with error %d" % err)
+	var create_err := tex_arr.create_from_images(images)
+	if create_err != OK:
+		push_error("GroundManager: Texture2DArray creation failed with error %d" % create_err)
 		return null
 	return tex_arr
 

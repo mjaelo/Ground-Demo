@@ -4,49 +4,42 @@ render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_sc
 // All terrain textures packed into one array, indexed by layer.
 uniform sampler2DArray terrain_textures : source_color, filter_linear_mipmap, repeat_enable;
 
-// Per-chunk splatmap (filter_nearest so encoded indices stay intact).
-uniform sampler2D splatmap : filter_nearest, repeat_disable;
+// Per-chunk splatmap: each channel = weight for one texture layer.
+// R = texture 0, G = texture 1, B = texture 2, A = texture 3.
+// Using filter_linear so the GPU smoothly interpolates weights between texels.
+uniform sampler2D splatmap : filter_linear, repeat_disable;
 
-// How many times the ground texture tiles across one chunk
+// Number of texture layers stored in terrain_textures (max 4 for RGBA encoding).
+uniform int texture_count = 4;
+
+// How many times the ground texture tiles across one chunk.
 uniform float texture_scale : hint_range(0.01, 100.0) = 16.0;
 
-// Chunk size in world units (used to compute UV from vertex position)
+// Chunk size in world units (used to compute UV from vertex position).
 uniform float region_size = 256.0;
-
-// Decode a single splatmap texel into a final terrain colour.
-vec3 decode_splat(vec3 splat, vec2 tile_uv) {
-	float idx_a = round(splat.r * 255.0) - 1.0;
-	float idx_b = round(splat.g * 255.0) - 1.0;
-	idx_a = max(idx_a, 0.0);
-	idx_b = max(idx_b, 0.0);
-	vec3 col_a = texture(terrain_textures, vec3(tile_uv, idx_a)).rgb;
-	vec3 col_b = texture(terrain_textures, vec3(tile_uv, idx_b)).rgb;
-	return mix(col_a, col_b, splat.b);
-}
 
 void fragment() {
 	vec2 tile_uv = UV * texture_scale;
 
-	// Manual bilinear interpolation of the splatmap:
-	// Decode each of the 4 nearest texels independently (preserving
-	// integer texture indices), then bilinearly blend the final colours.
-	vec2 splat_size = vec2(textureSize(splatmap, 0));
-	vec2 texel_pos  = UV * splat_size - 0.5;
-	vec2 base       = floor(texel_pos);
-	vec2 f          = texel_pos - base;
+	// Sample the weight map — GPU bilinear gives us smooth interpolation for free.
+	vec4 w = texture(splatmap, UV);
 
-	vec2 uv00 = (base + vec2(0.5, 0.5)) / splat_size;
-	vec2 uv10 = (base + vec2(1.5, 0.5)) / splat_size;
-	vec2 uv01 = (base + vec2(0.5, 1.5)) / splat_size;
-	vec2 uv11 = (base + vec2(1.5, 1.5)) / splat_size;
+	// Normalise weights so they sum to 1 (guards against rounding drift).
+	float w_sum = w.r + w.g + w.b + w.a;
+	if (w_sum > 0.001) {
+		w /= w_sum;
+	} else {
+		w = vec4(0.0, 1.0, 0.0, 0.0); // fallback: texture 1 (Grass)
+	}
 
-	vec3 c00 = decode_splat(texture(splatmap, uv00).rgb, tile_uv);
-	vec3 c10 = decode_splat(texture(splatmap, uv10).rgb, tile_uv);
-	vec3 c01 = decode_splat(texture(splatmap, uv01).rgb, tile_uv);
-	vec3 c11 = decode_splat(texture(splatmap, uv11).rgb, tile_uv);
+	// Blend all texture layers by their weights.
+	vec3 col = vec3(0.0);
+	if (texture_count > 0 && w.r > 0.001) col += texture(terrain_textures, vec3(tile_uv, 0.0)).rgb * w.r;
+	if (texture_count > 1 && w.g > 0.001) col += texture(terrain_textures, vec3(tile_uv, 1.0)).rgb * w.g;
+	if (texture_count > 2 && w.b > 0.001) col += texture(terrain_textures, vec3(tile_uv, 2.0)).rgb * w.b;
+	if (texture_count > 3 && w.a > 0.001) col += texture(terrain_textures, vec3(tile_uv, 3.0)).rgb * w.a;
 
-	ALBEDO = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
-
+	ALBEDO = col;
 	ROUGHNESS = 0.85;
 	SPECULAR = 0.2;
 }

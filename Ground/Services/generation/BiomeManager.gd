@@ -1,53 +1,62 @@
 extends RefCounted
 class_name BiomeManager
 
-# ── Biome registry ───────────────────────────────────────────────────
-var biomes := []
-## Number of terrain textures loaded (from texture_values.json).
-var texture_count: int = 4 #TODO get from JSON
+var biomes := [] # ── Biome registry ───────────────────────────────────────────────────
+var _noises: Array[FastNoiseLite] = [] # ── One noise source per biome (built automatically) ─────────────────
 
-func set_texture_count(count: int) -> void:
-	texture_count = count
-
-# ── One noise source per biome (built automatically) ─────────────────
-var _noises: Array[FastNoiseLite] = []
-
+# TODO move Constants to GroundConstants
 ## Base seed; each biome offsets from this.
 var noise_seed: int = 7891
+## Controls how sharply biomes separate from each other for texture blending. Higher = sharper transitions. Lower = softer transitions.
+var blend_sharpness: float = 100.0
+var height_blend_sharpness: float = 10.0
+## Conversion constants – these ensure the internal values fed to the
+const _STEEPNESS_BASE: float = 10.0
+const _RARITY_BASE: float = 5.0
+const _SIZE_BASE_FREQ: float = 0.00015
+const _MAX_HEIGHT_AMPLITUDE: float = 1.0
 
-## Score difference at which blending starts (world-noise units).
-## Bigger = wider transition zones.
-var blend_margin: float = 0.12
-
+#─ Initialization ─────────────────────────────────────────────────────
 func _init() -> void:
 	_load_biomes_from_json()
 	_build_noises()
 
-# ── JSON loading ──────────────────────────────────────────────────────
 func _load_biomes_from_json() -> void:
 	biomes = GameUtils.load_from_json(GroundConstants.BIOME_VALUES_PATH, BiomeData, "biomes") as Array[BiomeData]
 	if biomes.is_empty():
 		push_warning("BiomeManager: parsed 0 valid biomes from %s" % GroundConstants.BIOME_VALUES_PATH)
 
-## Call after modifying `biomes` at runtime.
 func _build_noises() -> void:
 	_noises.clear()
 	for i in biomes.size():
 		var n := FastNoiseLite.new()
 		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		n.frequency = biomes[i].get_biome_frequency()
+		n.frequency = get_biome_frequency((biomes[i] as BiomeData).biome_size)
 		n.seed = noise_seed + i * 5137   # different seed per biome
 		_noises.append(n)
 
 # ── Core API ──────────────────────────────────────────────────────────
 
-## Returns the blended height-curve exponent for a world position.
-func get_height_exponent(world_x: float, world_z: float) -> float:
-	var bw := _biome_weights(world_x, world_z)
-	var curve := 0.0
+## Computes the terrain height (0..1 fraction of height range) at a world position.
+## Evaluates pow(noise, exponent) per biome individually, then linearly blends
+## the resulting heights. Uses proportional scoring (all biomes contribute based
+## on their score) to avoid sharp lines where second-place biomes change.
+func sample_height(noise: FastNoiseLite, world_x: float, world_z: float) -> float:
+	var bw := _height_biome_weights(world_x, world_z)
+	var raw01: float = (noise.get_noise_2d(world_x, world_z) + 1.0) * 0.5
+	var amplitude: float = 0.0
 	for i in bw.size():
-		curve += biomes[i].get_height_exponent() * bw[i]
-	return curve
+		var w := bw[i]
+		if w < 0.001:
+			continue
+		amplitude += get_height_amplitude((biomes[i] as BiomeData).steepness_level) * w
+	return clampf(raw01 * amplitude, 0.0, 1.0)
+
+func get_height_amplitude(steepness_level: float) -> float:
+	if steepness_level <= 0.0:
+		return 0.0
+	var t: float = clampf(steepness_level / 100.0, 0.0, 1.0)
+	return lerpf(0.0, _MAX_HEIGHT_AMPLITUDE, t)
 
 ## Returns the dominant BiomeData at a world position.
 func get_biome_at(world_x: float, world_z: float) -> BiomeData:
@@ -60,7 +69,10 @@ func get_biome_at(world_x: float, world_z: float) -> BiomeData:
 
 # ── Internal: per-biome noise competition ────────────────────────────
 
-## Returns per-biome weights that sum to 1.0 (at most two non-zero).
+## Returns per-biome weights that sum to 1.0.
+## Uses power-normalized scoring: each biome's score is raised to
+## blend_sharpness, then all are normalised. This naturally produces
+## ~100% weight deep inside a biome and gradual transitions at boundaries.
 func _biome_weights(world_x: float, world_z: float) -> Array[float]:
 	var count: int = biomes.size()
 
@@ -68,68 +80,96 @@ func _biome_weights(world_x: float, world_z: float) -> Array[float]:
 	var scores: Array[float] = []
 	scores.resize(count)
 	for i in count:
-		# noise is -1..1, shift to 0..1 then scale by weight
 		var raw: float = (_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
-		scores[i] = raw * biomes[i].get_biome_weight()
+		scores[i] = raw * get_biome_weight((biomes[i] as BiomeData).biome_rarity)
 
-	# Find best and second-best
-	var best_i := 0
-	var second_i := -1
-	for i in range(1, count):
-		if scores[i] > scores[best_i]:
-			second_i = best_i
-			best_i = i
-		elif second_i < 0 or scores[i] > scores[second_i]:
-			second_i = i
-
+	# Raise to sharpening power and normalise.
+	# Higher blend_sharpness → steeper transitions, more distinct biomes.
+	# Lower → wider, softer blending zones.
 	var weights: Array[float] = []
 	weights.resize(count)
+	var total: float = 0.0
 	for i in count:
-		weights[i] = 0.0
+		# Clamp to small positive to avoid pow(0, n) = 0 discontinuities
+		var w: float = pow(maxf(scores[i], 0.0001), blend_sharpness)
+		weights[i] = w
+		total += w
 
-	if second_i < 0:
-		weights[best_i] = 1.0
-		return weights
-
-	# How close are the top two scores? Blend within margin.
-	var diff: float = scores[best_i] - scores[second_i]
-	if diff >= blend_margin:
-		# Clear winner
-		weights[best_i] = 1.0
+	if total <= 0.0:
+		for i in count:
+			weights[i] = 1.0 / float(count)
 	else:
-		# Smooth blend: 0 at edge (diff=0) → 1 fully inside (diff=margin)
-		var t: float = diff / blend_margin  # 0..1
-		t = t * t * (3.0 - 2.0 * t)         # smoothstep
-		weights[best_i] = 0.5 + 0.5 * t     # 0.5..1.0
-		weights[second_i] = 1.0 - weights[best_i]  # 0.5..0.0
+		var inv: float = 1.0 / total
+		for i in count:
+			weights[i] *= inv
 
 	return weights
 
-# ── Control-map encoding ─────────────────────────────────────────────
+func _height_biome_weights(world_x: float, world_z: float) -> Array[float]:
+	var count: int = biomes.size()
+	var scores: Array[float] = []
+	scores.resize(count)
+	for i in count:
+		var raw: float = (_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
+		scores[i] = raw * get_biome_weight((biomes[i] as BiomeData).biome_rarity)
 
-## Terrain control map bit layout (from the shader): TODO is it needed?
-##   Bit  0       : autoshader flag (0 = manual texture)
-##   Bit  2       : hole
-##   Bits 14-21   : blend value (0-255)
-##   Bits 22-26   : overlay texture ID
-##   Bits 27-31   : base texture ID
-static func encode_control(base_id: int, overlay_id: int = -1, blend_byte: int = 0) -> float:
-	var bits: int = 0
-	bits |= (base_id & 0x1F) << 27
-	if overlay_id >= 0:
-		bits |= (overlay_id & 0x1F) << 22
+	var weights: Array[float] = []
+	weights.resize(count)
+	var total: float = 0.0
+	for i in count:
+		var w: float = pow(maxf(scores[i], 0.0001), height_blend_sharpness)
+		weights[i] = w
+		total += w
+
+	if total <= 0.0:
+		for i in count:
+			weights[i] = 1.0 / float(count)
 	else:
-		bits |= (base_id & 0x1F) << 22
-	bits |= (blend_byte & 0xFF) << 14
-	# Bit 0 = 0 → autoshader OFF (manual texturing)
-	var buf := PackedByteArray()
-	buf.resize(4)
-	buf.encode_u32(0, bits)
-	return buf.decode_float(0)
+		var inv: float = 1.0 / total
+		for i in count:
+			weights[i] *= inv
 
+	return weights
 
-## Returns the texture ID for a given slope angle in degrees.
-func get_texture_id(slope_deg: float, steep_texture_id, flat_texture_id) -> int:
-	if slope_deg > GroundConstants.STEEP_THRESHOLD:
-		return steep_texture_id
-	return flat_texture_id
+## Returns per-biome weights proportional to each biome's score.
+## Every biome contributes: weight_i = score_i / sum(scores).
+## Weights change continuously everywhere — no top-2 selection means
+## no sharp lines where the second-place biome changes.
+func _all_biome_weights(world_x: float, world_z: float) -> Array[float]:
+	var count: int = biomes.size()
+	var scores: Array[float] = []
+	scores.resize(count)
+	var total: float = 0.0
+	for i in count:
+		var raw: float = (_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
+		var s: float = raw * get_biome_weight((biomes[i] as BiomeData).biome_rarity)
+		scores[i] = s
+		total += s
+
+	var weights: Array[float] = []
+	weights.resize(count)
+	if total <= 0.0:
+		for i in count:
+			weights[i] = 1.0 / float(count)
+	else:
+		for i in count:
+			weights[i] = scores[i] / total
+	return weights
+
+## Returns the pow() exponent used for height generation (same as old height_curve).
+func get_height_exponent(steepness_level) -> float:
+	if steepness_level <= 0.0:
+		return 100.0  # effectively flat
+	return _STEEPNESS_BASE / steepness_level
+
+## Returns the internal weight for biome competition scoring (same as old weight).
+func get_biome_weight(biome_rarity) -> float:
+	if biome_rarity <= 0.0:
+		return _RARITY_BASE
+	return _RARITY_BASE / biome_rarity
+
+## Returns the internal noise frequency for patch size (same as old biome_frequency).
+func get_biome_frequency(biome_size) -> float:
+	if biome_size <= 0.0:
+		return _SIZE_BASE_FREQ
+	return _SIZE_BASE_FREQ / biome_size

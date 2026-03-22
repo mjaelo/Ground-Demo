@@ -40,8 +40,6 @@ func _editor_generate() -> void:
 		if tex:
 			tex_data.texture = tex
 
-	biome_mgr.set_texture_count(loaded_textures.size())
-
 	var mat := _build_editor_shader_material(loaded_textures)
 	var generator := ChunkGenerator.new()
 	generator.initialize(noise, biome_mgr)
@@ -94,6 +92,7 @@ func _build_editor_shader_material(loaded_textures: Array) -> ShaderMaterial:
 
 	mat.set_shader_parameter("texture_scale", GroundConstants.TEXTURE_SCALE)
 	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
+	mat.set_shader_parameter("texture_count", loaded_textures.size())
 	return mat
 
 func _editor_clear() -> void:
