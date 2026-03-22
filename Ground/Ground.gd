@@ -22,9 +22,9 @@ var _mob_activation_manager: MobActivationManager # TODO should be placed in Mob
 # ── Lifecycle ─────────────────────────────────────────────────────────
 
 func _ready() -> void:
-	await main.ready
 	if Engine.is_editor_hint():
 		return
+	await main.ready
 	_create_managers()
 
 func _process(delta: float) -> void:

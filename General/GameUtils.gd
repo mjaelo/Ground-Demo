@@ -1,5 +1,5 @@
 extends Object
-class_name Utils
+class_name GameUtils
 
 # ── JSON Handling ─────────────────────────────────────────────────────────
 ## Loads a JSON file and returns its root dictionary, or null on error.

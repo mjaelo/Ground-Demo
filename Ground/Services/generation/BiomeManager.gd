@@ -4,7 +4,7 @@ class_name BiomeManager
 # ── Biome registry ───────────────────────────────────────────────────
 var biomes := []
 ## Number of terrain textures loaded (from texture_values.json).
-var texture_count: int = 3
+var texture_count: int = 4 #TODO get from JSON
 
 func set_texture_count(count: int) -> void:
 	texture_count = count
@@ -25,7 +25,7 @@ func _init() -> void:
 
 # ── JSON loading ──────────────────────────────────────────────────────
 func _load_biomes_from_json() -> void:
-	biomes = Utils.load_from_json(GroundConstants.BIOME_VALUES_PATH, BiomeData, "biomes") as Array[BiomeData]
+	biomes = GameUtils.load_from_json(GroundConstants.BIOME_VALUES_PATH, BiomeData, "biomes") as Array[BiomeData]
 	if biomes.is_empty():
 		push_warning("BiomeManager: parsed 0 valid biomes from %s" % GroundConstants.BIOME_VALUES_PATH)
 
@@ -35,18 +35,18 @@ func _build_noises() -> void:
 	for i in biomes.size():
 		var n := FastNoiseLite.new()
 		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		n.frequency = biomes[i].biome_frequency # Use per-biome frequency for patch size
+		n.frequency = biomes[i].get_biome_frequency()
 		n.seed = noise_seed + i * 5137   # different seed per biome
 		_noises.append(n)
 
 # ── Core API ──────────────────────────────────────────────────────────
 
 ## Returns the blended height-curve exponent for a world position.
-func get_height_curve(world_x: float, world_z: float) -> float:
+func get_height_exponent(world_x: float, world_z: float) -> float:
 	var bw := _biome_weights(world_x, world_z)
 	var curve := 0.0
 	for i in bw.size():
-		curve += biomes[i].height_curve * bw[i]
+		curve += biomes[i].get_height_exponent() * bw[i]
 	return curve
 
 ## Returns the dominant BiomeData at a world position.
@@ -70,7 +70,7 @@ func _biome_weights(world_x: float, world_z: float) -> Array[float]:
 	for i in count:
 		# noise is -1..1, shift to 0..1 then scale by weight
 		var raw: float = (_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
-		scores[i] = raw * biomes[i].weight
+		scores[i] = raw * biomes[i].get_biome_weight()
 
 	# Find best and second-best
 	var best_i := 0

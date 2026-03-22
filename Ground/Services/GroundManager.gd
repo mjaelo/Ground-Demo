@@ -34,7 +34,7 @@ var _player_boundary: PlayerBoundary = null
 var _noise: FastNoiseLite = null
 var _biome_manager: BiomeManager = null
 
-var loaded_textures: = []
+var loaded_textures := []
 
 func initialize(parent: Ground, player: CharacterBody3D) -> void:
 	_parent = parent
@@ -60,7 +60,7 @@ func initialize(parent: Ground, player: CharacterBody3D) -> void:
 func sample_height(world_x: float, world_z: float) -> float:
 	var h := _noise.get_noise_2d(world_x, world_z)
 	h = (h + 1.0) * 0.5
-	h = pow(h, _biome_manager.get_height_curve(world_x, world_z))
+	h = pow(h, _biome_manager.get_height_exponent(world_x, world_z))
 	return GroundConstants.height_min + h * (GroundConstants.height_max - GroundConstants.height_min)
 
 func sample_normal(world_x: float, world_z: float) -> Vector3:
@@ -192,11 +192,11 @@ func _update_visible_chunks() -> void:
 
 # ── Thread helpers ────────────────────────────────────────────────────
 
-func _start_thread(dict: Dictionary, loc: Vector2i, lod_tier: int) -> void:
+func _start_thread(thread_dict: Dictionary, loc: Vector2i, lod_tier: int) -> void:
 	var thread := Thread.new()
-	dict[loc] = thread
+	thread_dict[loc] = thread # TODO 
 	if thread.start(_chunk_generator.generate_chunk_data.bind(loc, lod_tier)) != OK:
-		dict.erase(loc)
+		thread_dict.erase(loc)
 
 func _start_decor_thread(loc: Vector2i) -> void:
 	var thread := Thread.new()
@@ -310,19 +310,68 @@ func _build_shader_material() -> ShaderMaterial:
 	var shader: Shader = load(GroundConstants.TERRAIN_SHADER_PATH)
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
-	for i in loaded_textures.size():
-		var tex_data: TextureData = loaded_textures[i]
-		if tex_data.texture:
-			mat.set_shader_parameter("tex_%d" % i, tex_data.texture)
-		else:
-			push_warning("TextureData index %d (%s) missing texture resource!" % [i, tex_data.texture_path])
+
+	# Build a Texture2DArray from all loaded textures so the shader can
+	# index any texture dynamically without a fixed number of uniforms.
+	var tex_array := _build_texture_array()
+	if tex_array:
+		mat.set_shader_parameter("terrain_textures", tex_array)
+	else:
+		push_warning("GroundManager: Failed to build terrain texture array!")
+
 	mat.set_shader_parameter("texture_scale", GroundConstants.TEXTURE_SCALE)
 	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
 	return mat
 
-func load_textures() -> void:
-	loaded_textures = Utils.load_from_json(GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures")
+## Packs every loaded terrain texture into a single Texture2DArray.
+## All textures are resized to a common resolution so the array is valid.
+func _build_texture_array() -> Texture2DArray:
+	if loaded_textures.is_empty():
+		push_warning("GroundManager: No textures loaded, cannot build texture array.")
+		return null
+
+	# Load raw images from the original source files (not Godot-imported textures)
+	# to avoid GPU-compressed format issues when building the Texture2DArray.
+	var images: Array[Image] = []
+	var common_size := Vector2i.ZERO
+
 	for tex_data in loaded_textures:
+		var img := Image.new()
+		# Convert res:// path to the project file system path for raw loading
+		var path: String = tex_data.texture_path
+		var err := img.load(ProjectSettings.globalize_path(path))
+		if err != OK:
+			push_warning("GroundManager: Could not load raw image '%s' (error %d), using placeholder." % [path, err])
+			var sz := common_size if common_size != Vector2i.ZERO else Vector2i(256, 256)
+			img = Image.create_empty(sz.x, sz.y, false, Image.FORMAT_RGBA8)
+			img.fill(Color.MAGENTA)
+
+		if common_size == Vector2i.ZERO:
+			common_size = Vector2i(img.get_width(), img.get_height())
+
+		# Ensure uniform size
+		if Vector2i(img.get_width(), img.get_height()) != common_size:
+			img.resize(common_size.x, common_size.y)
+		# Ensure consistent uncompressed format
+		if img.get_format() != Image.FORMAT_RGBA8:
+			img.convert(Image.FORMAT_RGBA8)
+		img.generate_mipmaps()
+		images.append(img)
+
+	if images.is_empty():
+		push_warning("GroundManager: No images loaded for texture array.")
+		return null
+
+	var tex_arr := Texture2DArray.new()
+	var err := tex_arr.create_from_images(images)
+	if err != OK:
+		push_error("GroundManager: Texture2DArray creation failed with error %d" % err)
+		return null
+	return tex_arr
+
+func load_textures() -> void:
+	loaded_textures = GameUtils.load_from_json(GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures")
+	for tex_data:TextureData in loaded_textures:
 		if tex_data.texture_name.is_empty() or tex_data.texture_path.is_empty():
 			push_warning("GroundManager: texture entry missing name or path")
 			continue

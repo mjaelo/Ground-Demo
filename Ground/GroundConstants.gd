@@ -12,6 +12,8 @@ const TEXTURES_FILE_PATH := "res://assets/textures/texture_values.json"
 # ── BIOMES ────────────────────────────────────────────────────────────
 const BIOME_VALUES_PATH := "res://assets/biomes/biome_values.json"
 const STEEP_THRESHOLD: float = 30.0
+## Degrees on each side of STEEP_THRESHOLD over which flat/steep textures blend.
+const STEEP_BLEND_RANGE: float = 10.0
 
 # ── MESH ASSETS ───────────────────────────────────────────────────────
 const MESH_ASSETS_PATH: String = "res://assets/mesh_assets/"

@@ -29,7 +29,7 @@ func _load_assets_from_disk() -> void:
 	dir.list_dir_end()
 
 func _load_placement_rules() -> void:
-	_placement_layers = Utils.load_from_json(GroundConstants.DECOR_VALUES_FILE, DecorData, "decors") as Array[DecorData]
+	_placement_layers = GameUtils.load_from_json(GroundConstants.DECOR_VALUES_FILE, DecorData, "decors") as Array[DecorData]
 	for decor in _placement_layers:
 		var key: String = decor.asset_name.to_lower()
 		if not _scene_assets.has(key):
@@ -244,5 +244,3 @@ func clear_scene_meshes(loc: Vector2i) -> void:
 			if is_instance_valid(node):
 				node.queue_free()
 		_scene_nodes.erase(slot_key)
-
-

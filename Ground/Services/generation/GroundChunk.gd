@@ -30,18 +30,6 @@ static func build_chunk(p_data: ChunkData, shader_material: ShaderMaterial, add_
 	mi.material_override = mat
 	mi.position = Vector3(p_data.loc.x * GroundConstants.CHUNK_SIZE, 0, p_data.loc.y * GroundConstants.CHUNK_SIZE)
 
-	# Set visibility range so the renderer auto-culls distant chunks
-	var vis_end: float = 0.0
-	match p_data.lod_tier:
-		GroundConstants.LOD_LEVELS.FAR:
-			vis_end = GroundConstants.far_radius * GroundConstants.CHUNK_SIZE * 1.1
-		GroundConstants.LOD_LEVELS.MEDIUM:
-			vis_end = GroundConstants.medium_radius * GroundConstants.CHUNK_SIZE * 1.1
-		GroundConstants.LOD_LEVELS.CLOSE:
-			vis_end = 0.0  # no limit for close chunks
-	if vis_end > 0.0:
-		mi.visibility_range_end = vis_end
-		mi.visibility_range_end_margin = vis_end * 0.1
 
 	chunk.mesh_instance = mi
 
