@@ -1,10 +1,12 @@
 extends RefCounted
-class_name ChunkGenerator
+class_name ChunkManager
 
-## Generates heightmap, splatmap, and biome data for terrain chunks on worker threads.
+## Generates heightmap, splatmap and biome data for terrain chunks.
 
 var _noise: FastNoiseLite = null
 var _biome_manager: BiomeManager = null
+
+const BIOME_WEIGHT_THRESHOLD: float = 0.01
 
 func initialize(noise: FastNoiseLite, biome_manager: BiomeManager) -> void:
 	_noise = noise
@@ -46,7 +48,10 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 
 	# Cache biome weights for each pixel
 	var biome_count: int = _biome_manager.biomes.size()
-	var biome_weight_totals: Array = range(biome_count).map(func(_a): return 0.0)
+	var biome_weight_totals: Array = []
+	biome_weight_totals.resize(biome_count)
+	for i in range(biome_count):
+		biome_weight_totals[i] = 0.0
 	var cached_biome_weights: Array = []
 	cached_biome_weights.resize(resolution * resolution)
 
@@ -59,18 +64,16 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 			cached_biome_weights[x * resolution + y] = biome_weights
 			for i in range(biome_count):
 				biome_weight_totals[i] += biome_weights[i]
-			# Height: per-biome pow() blended with wide margin
-			var h: float = _biome_manager.sample_height(_noise, world_x, world_z)
-			heightmap.set_pixel(x, y, Color(GroundConstants.height_min + h * height_range, 0, 0, 1))
+			# Height: sample via helper and convert to world Y (preserve existing behaviour)
+			var h01: float =  _biome_manager.sample_height(_noise, world_x, world_z)
+			var h_world: float = GroundConstants.height_min + h01 * height_range
+			heightmap.set_pixel(x, y, Color(h_world, 0, 0, 1))
 
 	# --- Determine dominant biome for the whole chunk ---
 	var dominant_biome_idx: int = biome_weight_totals.find(biome_weight_totals.max())
 	data.dominant_biome = _biome_manager.biomes[dominant_biome_idx]
 
-	# --- Splatmap generation ---
-	# Weight-map encoding: each RGBA channel = weight for one texture layer.
-	# R = texture 0, G = texture 1, B = texture 2, A = texture 3.
-	# Weights are normalised to sum to 1.0 so the shader can blend directly.
+	# Splatmap generation (RGBA = texture weights)
 	if data.lod_tier == GroundConstants.LOD_LEVELS.FAR:
 		# For far LOD, use LOD texture IDs for splatmap coloring
 		for x in range(resolution):
@@ -78,7 +81,7 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 				var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
 				var tex_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
 				for i in range(biome_count):
-					if biome_weights[i] < 0.01:
+					if biome_weights[i] < BIOME_WEIGHT_THRESHOLD:
 						continue
 					var tex_id: int = (_biome_manager.biomes[i] as BiomeData).lod_texture_id
 					if tex_id >= 0 and tex_id < 4:
@@ -108,8 +111,8 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 					var wx: float = float(x) * inv_res * chunk_size + base_x
 					var wz: float = float(y + 1) * inv_res * chunk_size + base_z
 					height_down = _sample_height(wx, wz, height_range)
-				# Calculate slope in degrees
-				var slope: float = rad_to_deg(acos(clampf(Vector3(-(height_right - height_center) / cell_size, 1.0, -(height_down - height_center) / cell_size).normalized().dot(Vector3.UP), -1.0, 1.0)))
+				# Calculate slope in degrees (either fast gradient-based or original normal->acos)
+				var slope := rad_to_deg(acos(clampf(Vector3(-(height_right - height_center) / cell_size, 1.0, -(height_down - height_center) / cell_size).normalized().dot(Vector3.UP), -1.0, 1.0)))
 				# Smooth blend factor: 0 = fully flat texture, 1 = fully steep texture
 				var steep_factor: float = clampf((slope - slope_lo) / (slope_hi - slope_lo), 0.0, 1.0)
 				steep_factor = steep_factor * steep_factor * (3.0 - 2.0 * steep_factor) # smoothstep
@@ -117,7 +120,7 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 				var tex_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
 				for i in range(biome_count):
 					var biome_weight := biome_weights[i]
-					if biome_weight < 0.01:
+					if biome_weight < BIOME_WEIGHT_THRESHOLD:
 						continue
 					var biome_data: BiomeData = (_biome_manager.biomes[i] as BiomeData)
 					var flat_w: float = biome_weight * (1.0 - steep_factor)

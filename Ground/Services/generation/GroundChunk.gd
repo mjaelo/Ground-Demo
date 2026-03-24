@@ -63,7 +63,7 @@ var lod_tier: int:
 var heightmap: Image:
 	get: return data.heightmap if data else null
 
-var mesh_assets_spawned: bool:
+var are_decors_spawned: bool:
 	get: return data.decor_spawned if data else false
 	set(value):
 		if data:

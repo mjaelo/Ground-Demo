@@ -5,7 +5,6 @@ const RETARGET_COOLDOWN: float = 1.0
 
 @export var MOVE_SPEED: float = 50.0
 @export var target: Node3D
-
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 
 var _retarget_timer: float = 1.0
@@ -38,7 +37,7 @@ func _physics_process(p_delta: float) -> void:
 	if not _navigation_ready:
 		return
 
-	# Snap to terrain surface so the enemy doesn't float.
+	# Snap to terrain surface so the enemy doesn't float. TODO broken
 	var terrain_node: Node = get_node_or_null("../Terrain3D")
 	if terrain_node and terrain_node.data:
 		var h: float = terrain_node.data.get_height(global_position)

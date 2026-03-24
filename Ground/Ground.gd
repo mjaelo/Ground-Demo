@@ -7,17 +7,17 @@ class_name Ground
 ## the distances involved and the complexity was not justified.
 
 # ── Terrain Generation ────────────────────────────────────────────────
-var _noise := FastNoiseLite.new()
+var noise := FastNoiseLite.new()
 
 # ── Node references ──────────────────────────────────────────────────
 var main: Main = null
 @onready var nav_baker: RuntimeNavigationBaker = $NavBaker
 
 # ── Managers ──────────────────────────────────────────────────────────
-var _mesh_placement_manager: MeshAssetManager
-var _biome_manager: BiomeManager
-var _terrain_manager: GroundManager
-var _mob_activation_manager: MobActivationManager # TODO should be placed in Mob directory?
+var decor_manager: DecorManager
+var biome_manager: BiomeManager
+var terrain_manager: GroundManager
+var mob_activation_manager: MobActivationManager # TODO should be placed in Mob directory?
 
 # ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -31,26 +31,26 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
-	if _terrain_manager:
-		_terrain_manager.tick(delta)
+	if terrain_manager:
+		terrain_manager.tick(delta)
 
 # ── Setup ─────────────────────────────────────────────────────────────
 
 func _create_managers() -> void:
-	_noise.frequency = GroundConstants.NOISE_FREQUENCY
+	noise.frequency = GroundConstants.NOISE_FREQUENCY
 
-	_mesh_placement_manager = MeshAssetManager.new()
-	_mesh_placement_manager.initialize(null)
+	decor_manager = DecorManager.new()
+	decor_manager.initialize(null)
 
-	_biome_manager = BiomeManager.new()
+	biome_manager = BiomeManager.new()
 
-	_terrain_manager = GroundManager.new()
-	_terrain_manager.load_textures()
-	_terrain_manager.initialize(self, main.player)
+	terrain_manager = GroundManager.new()
+	terrain_manager.load_textures()
+	terrain_manager.initialize(self, main.player)
 
-	_mob_activation_manager = MobActivationManager.new()
-	_mob_activation_manager.initialize(main.enemy, main.player, nav_baker, _terrain_manager)
+	mob_activation_manager = MobActivationManager.new()
+	mob_activation_manager.initialize(main.enemy, main.player, nav_baker, terrain_manager)
 
 	# When the initial bulk load finishes, spawn the player and activate mobs
-	_terrain_manager.initial_load_complete.connect(_mob_activation_manager.on_initial_load_complete)
-	nav_baker.bake_finished.connect(_mob_activation_manager.on_nav_bake_finished)
+	terrain_manager.initial_load_complete.connect(mob_activation_manager.on_initial_load_complete)
+	nav_baker.bake_finished.connect(mob_activation_manager.on_nav_bake_finished)

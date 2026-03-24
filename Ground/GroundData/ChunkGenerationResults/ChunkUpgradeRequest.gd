@@ -2,12 +2,12 @@
 class_name ChunkUpgradeRequest
 
 var loc: Vector2i
-var tier: int
+var lod_tier: int
 var dist: float
 
-func init(_loc: Vector2i, _tier: int, _dist: float) -> ChunkUpgradeRequest:
+func init(_loc: Vector2i, _lod_tier: int, _dist: float) -> ChunkUpgradeRequest:
 	loc = _loc
-	tier = _tier
+	lod_tier = _lod_tier
 	dist = _dist
 	return self
 

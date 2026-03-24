@@ -19,7 +19,7 @@ func _ready():
 			else:
 				_editor_clear()
 
-# ── Editor preview generation — delegates to ChunkGenerator ──────────
+# ── Editor preview generation — delegates to ChunkManager ──────────
 func _editor_generate() -> void:
 	_editor_clear()
 
@@ -41,7 +41,7 @@ func _editor_generate() -> void:
 			tex_data.texture = tex
 
 	var mat := _build_editor_shader_material(loaded_textures)
-	var generator := ChunkGenerator.new()
+	var generator := ChunkManager.new()
 	generator.initialize(noise, biome_mgr)
 
 	var r: int = editor_preview_radius

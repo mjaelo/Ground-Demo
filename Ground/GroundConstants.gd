@@ -16,7 +16,7 @@ const STEEP_THRESHOLD: float = 30.0
 const STEEP_BLEND_RANGE: float = 10.0
 
 # ── MESH ASSETS ───────────────────────────────────────────────────────
-const MESH_ASSETS_PATH: String = "res://assets/mesh_assets/"
+const MESH_ASSETS_PATH: String = "res://assets/decors/"
 const DECOR_VALUES_FILE: String = MESH_ASSETS_PATH + "decor_values.json"
 const DECOR_STEP: int = 2 # Distance between placed mesh instances; lower = denser.
 const DECOR_EMPTY_CHANCE: float = 0.3

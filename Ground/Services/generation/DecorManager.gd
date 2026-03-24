@@ -1,5 +1,5 @@
 extends RefCounted
-class_name MeshAssetManager
+class_name DecorManager
 # TODO house scenes are not rotated
 
 # asset_name (lowercase) -> PackedScene
@@ -63,8 +63,8 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 	if not large_layers.is_empty():
 		for x in range(0, region_size, step):
 			for z in range(0, region_size, step):
-				var gx: int = x / step
-				var gz: int = z / step
+				var gx: int = int(x / step)
+				var gz: int = int(z / step)
 				if blocked.has(Vector2i(gx, gz)):
 					continue
 				if rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
@@ -78,8 +78,8 @@ func generate_transforms(region_origin_m: Vector3, region_size: int, height_samp
 	if not small_layers.is_empty():
 		for x in range(0, region_size, step):
 			for z in range(0, region_size, step):
-				var gx: int = x / step
-				var gz: int = z / step
+				var gx: int = int(x / step)
+				var gz: int = int(z / step)
 				if blocked.has(Vector2i(gx, gz)):
 					continue
 				if rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
@@ -195,7 +195,9 @@ func _place_instance(decor: DecorData, transforms_by_name: Dictionary, pos_x: fl
 
 static func _slope_deg_at(wx: float, wz: float, normal_sampler: Callable) -> float:
 	var n: Vector3 = normal_sampler.call(wx, wz)
-	return rad_to_deg(acos(clamp(n.dot(Vector3.UP), -1.0, 1.0)))
+	var ny: float = clamp(n.dot(Vector3.UP), -1.0, 1.0)
+	# atan2(sin(theta), cos(theta)) == theta and sin(theta)=sqrt(1-ny^2)
+	return rad_to_deg(atan2(sqrt(max(0.0, 1.0 - ny * ny)), ny))
 
 func spawn_meshes(asset_name: String, transforms: Array, parent: Node, loc: Vector2i) -> void:
 	var key: String = asset_name.to_lower()

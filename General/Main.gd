@@ -5,7 +5,8 @@ class_name Main
 # ── Node references ──────────────────────────────────────────────────
 @onready var player: Player = $Player
 @onready var ui: Control = $UI
-@onready var enemy: Enemy = $Ground/Enemy # TODO should not be referenced here. enemy should be spawned by the ground when it generates, and the ground should be spawned by the world when it generates. this is just for testing purposes
+# TODO enemy should be spawned by the decor / chunk when it generates
+@onready var enemy: Enemy = $Ground/Enemy 
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:

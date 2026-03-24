@@ -1,22 +1,13 @@
 extends Resource
 class_name BiomeData
 
-## Human-readable biome name.
-var biome_name: String = ""
-## Controls terrain steepness. Higher = more steep/mountainous peaks.
-## Lower = gentler rolling hills. 0 = completely flat ground.
-var steepness_level: float = 2.0
-## Texture ID used on flat ground (slope below steep_slope_threshold).
-var flat_texture_id: int = 1  # Grass
-## Texture ID used on steep slopes (slope above steep_slope_threshold).
-var steep_texture_id: int = 0  # Rock
-## Texture ID shown on distant LOD chunks. -1 means use flat_texture_id.
-var lod_texture_id: int = -1
-## How rare this biome is. Higher = rarer (less likely to appear).
+var biome_name: String = "" # Human-readable biome name
+var steepness_level: float = 2.0 # Controls terrain steepness
+var flat_texture_id: int = 1    # Texture ID for flat ground (default Grass)
+var steep_texture_id: int = 0   # Texture ID for steep slopes (default Rock)
+var lod_texture_id: int = -1    # LOD texture (-1 => use flat_texture_id)
 var biome_rarity: float = 1.0
-## List of string IDs/names of allowed DecorData for this biome
-var allowed_decor_ids: Array = []
-## Controls the spatial size of biome patches. Higher = bigger patches, lower = smaller.
+var allowed_decor_ids: Array = [] # List of string IDs/names of allowed DecorData for this biome
 var biome_size: float = 1.0
 
 static func from_dict(entry: Dictionary) -> BiomeData:
