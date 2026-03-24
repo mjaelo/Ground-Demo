@@ -2,7 +2,7 @@
   "biomes": [
     {
       "name": "Plains",
-      "steepness_level": 20.0,
+      "steepness_level": 30.0,
       "biome_rarity": 1.25,
       "biome_size": 1.0,
       "flat_texture_id": 1,
@@ -13,21 +13,21 @@
     {
       "name": "Mountain",
       "steepness_level": 100.0,
-      "flat_texture_id": 1,
+      "flat_texture_id": 0,
       "steep_texture_id": 0,
       "lod_texture_id": 0,
-      "biome_rarity": 1.5,
-      "biome_size": 0.5,
+      "biome_rarity": 2,
+      "biome_size": 0.25,
       "allowed_decor_ids": ["Rock","Grass", "Tree"]
     },
     {
       "name": "Village",
-      "steepness_level": 1.0,
+      "steepness_level": 10.0,
       "flat_texture_id": 3,
       "steep_texture_id": 0,
       "lod_texture_id": 3,
-      "biome_rarity": 2.0,
-      "biome_size": 1.0,
+      "biome_rarity": 3.0,
+      "biome_size": 0.15,
       "allowed_decor_ids": ["House","Grass", "Tree", "Rock"]
     },
     {
@@ -36,7 +36,7 @@
       "flat_texture_id": 2,
       "steep_texture_id": 0,
       "lod_texture_id": 2,
-      "biome_rarity": 1.75,
+      "biome_rarity": 2,
       "biome_size": 2.0,
       "allowed_decor_ids": ["Rock"]
     }
