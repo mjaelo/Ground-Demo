@@ -5,9 +5,23 @@ class_name GroundChunk
 ## optional collision body, and a reference to the underlying ChunkData.
 
 # ── Per-chunk references ──────────────────────────────────────────────
-var data: ChunkData = null # TODO i dont think Chunk needs ChunkData field, its only needed for initialization.
+var data: ChunkData = null # TODO i dont think Chunk needs to store ChunkData, its only needed for initialization.
 var mesh_instance: MeshInstance3D = null
 var collision_body: StaticBody3D = null
+var allowed_decors: Array[DecorData] = []
+
+# ── Convenience accessors (delegate to data) ──────────────────────────
+var loc: Vector2i:
+	get: return data.loc if data else Vector2i.ZERO
+var lod_tier: int:
+	get: return data.lod_tier if data else GroundConstants.LOD_LEVELS.FAR
+var heightmap: Image:
+	get: return data.heightmap if data else null
+var are_decors_spawned: bool:
+	get: return data.decor_spawned if data else false
+	set(value):
+		if data:
+			data.decor_spawned = value
 
 ## Build the chunk node hierarchy from a ChunkData.
 ## Call on the main thread after generating data on a worker.
@@ -30,7 +44,6 @@ static func build_chunk(p_data: ChunkData, shader_material: ShaderMaterial, add_
 	mi.material_override = mat
 	mi.position = Vector3(p_data.loc.x * GroundConstants.CHUNK_SIZE, 0, p_data.loc.y * GroundConstants.CHUNK_SIZE)
 
-
 	chunk.mesh_instance = mi
 
 	if add_collision:
@@ -51,23 +64,6 @@ func destroy() -> void:
 		mesh_instance.queue_free()
 	mesh_instance = null
 	collision_body = null
-
-# ── Convenience accessors (delegate to data) ──────────────────────────
-
-var loc: Vector2i:
-	get: return data.loc if data else Vector2i.ZERO
-
-var lod_tier: int:
-	get: return data.lod_tier if data else GroundConstants.LOD_LEVELS.FAR
-
-var heightmap: Image:
-	get: return data.heightmap if data else null
-
-var are_decors_spawned: bool:
-	get: return data.decor_spawned if data else false
-	set(value):
-		if data:
-			data.decor_spawned = value
 
 # ── Mesh construction ─────────────────────────────────────────────────
 ## Builds an indexed mesh with smooth normals via generate_normals().

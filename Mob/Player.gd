@@ -1,9 +1,9 @@
 extends CharacterBody3D
 class_name Player
 
-@export var MOVE_SPEED: float = 50.0
-@export var JUMP_SPEED: float = 2.0
-@export var first_person: bool = false : 
+var MOVE_SPEED: float = 50.0
+var JUMP_SPEED: float = 2.0
+var first_person: bool = false : 
 	set(p_value):
 		first_person = p_value
 		if first_person:
@@ -14,13 +14,13 @@ class_name Player
 			$Body.visible = true
 			create_tween().tween_property($CameraManager/Arm, "spring_length", 6.0, .33)
 
-@export var gravity_enabled: bool = true :
+var gravity_enabled: bool = true :
 	set(p_value):
 		gravity_enabled = p_value
 		if not gravity_enabled:
 			velocity.y = 0
 			
-@export var collision_enabled: bool = true :
+var collision_enabled: bool = true :
 	set(p_value):
 		collision_enabled = p_value
 		$CollisionShapeBody.disabled = ! collision_enabled

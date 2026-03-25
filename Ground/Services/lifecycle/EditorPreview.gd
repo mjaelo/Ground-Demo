@@ -41,8 +41,9 @@ func _editor_generate() -> void:
 			tex_data.texture = tex
 
 	var mat := _build_editor_shader_material(loaded_textures)
+	var parent:= Ground.new()
 	var generator := ChunkManager.new()
-	generator.initialize(noise, biome_mgr)
+	generator.initialize(parent)
 
 	var r: int = editor_preview_radius
 	var total: int = (2 * r + 1) * (2 * r + 1)

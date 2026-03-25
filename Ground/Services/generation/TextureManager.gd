@@ -1,38 +1,65 @@
 ﻿extends RefCounted
-class_name TextureManager
+class_name TextureManager ## Handles shader material and texture array setup for terrain rendering.
 
-## Handles shader material and texture array setup for terrain rendering.
+var loaded_textures:Array[TextureData]
+var shader_material: ShaderMaterial = null
 
-static func build_shader_material(loaded_textures: Array) -> ShaderMaterial:
+func _init() -> void:
+	load_textures()
+	build_shader_material()
+
+func load_textures():
+	var loaded_tex := GameUtils.load_from_json(GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures")
+	for tex_data:TextureData in loaded_tex:
+		if tex_data.texture_name.is_empty() or tex_data.texture_path.is_empty():
+			push_warning("GroundManager: texture entry missing name or path")
+			continue
+		var tex = load(tex_data.texture_path)
+		if tex:
+			tex_data.texture = tex
+			loaded_textures.append(tex_data)
+		else:
+			push_warning("GroundManager: Could not load texture at %s" % tex_data.texture_path)
+
+func build_shader_material() -> void:
 	var shader: Shader = load(GroundConstants.TERRAIN_SHADER_PATH)
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
+	shader_material = ShaderMaterial.new()
+	shader_material.shader = shader
 
 	# Build a Texture2DArray from all loaded textures so the shader can
 	# index any texture dynamically without a fixed number of uniforms.
-	var tex_array := build_texture_array(loaded_textures)
+	var tex_array := build_texture_array()
 	if tex_array:
-		mat.set_shader_parameter("terrain_textures", tex_array)
+		shader_material.set_shader_parameter("terrain_textures", tex_array)
 	else:
 		push_warning("GroundMaterialManager: Failed to build terrain texture array!")
 
-	mat.set_shader_parameter("texture_scale", GroundConstants.TEXTURE_SCALE)
-	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
-	mat.set_shader_parameter("texture_count", loaded_textures.size())
-	return mat
+	shader_material.set_shader_parameter("texture_scale", GroundConstants.TEXTURE_SCALE)
+	shader_material.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
+	shader_material.set_shader_parameter("texture_count", loaded_textures.size())
 
 ## Packs every loaded terrain texture into a single Texture2DArray.
-## All textures are resized to a common resolution so the array is valid.
-static func build_texture_array(loaded_textures: Array) -> Texture2DArray:
+func build_texture_array() -> Texture2DArray:
 	if loaded_textures.is_empty():
 		push_warning("GroundMaterialManager: No textures loaded, cannot build texture array.")
 		return null
 
-	# Load raw images from the original source files (not Godot-imported textures)
-	# to avoid GPU-compressed format issues when building the Texture2DArray.
+	# Load raw images from the original source files
+	var images: Array[Image] = load_images()
+	if images.is_empty():
+		push_warning("GroundMaterialManager: No images loaded for texture array.")
+		return null
+
+	var tex_arr := Texture2DArray.new()
+	var create_err := tex_arr.create_from_images(images)
+	if create_err != OK:
+		push_error("GroundMaterialManager: Texture2DArray creation failed with error %d" % create_err)
+		return null
+	return tex_arr
+
+func load_images() -> Array[Image]:
 	var images: Array[Image] = []
 	var common_size := Vector2i.ZERO
-
 	for tex_data in loaded_textures:
 		var img := Image.new()
 		# Convert res:// path to the project file system path for raw loading
@@ -55,15 +82,4 @@ static func build_texture_array(loaded_textures: Array) -> Texture2DArray:
 			img.convert(Image.FORMAT_RGBA8)
 		img.generate_mipmaps()
 		images.append(img)
-
-	if images.is_empty():
-		push_warning("GroundMaterialManager: No images loaded for texture array.")
-		return null
-
-	var tex_arr := Texture2DArray.new()
-	var create_err := tex_arr.create_from_images(images)
-	if create_err != OK:
-		push_error("GroundMaterialManager: Texture2DArray creation failed with error %d" % create_err)
-		return null
-	return tex_arr
-
+	return images

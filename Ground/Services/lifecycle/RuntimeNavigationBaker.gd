@@ -1,28 +1,49 @@
 extends Node
 class_name RuntimeNavigationBaker
 
-signal bake_finished
+signal bake_finished # TODO never emitted
 
-var is_enabled: bool = true : set = set_enabled
-var enter_cost: float = 0.0 : set = set_enter_cost
-var travel_cost: float = 1.0 : set = set_travel_cost
-var navigation_layers: int = 1 : set = set_navigation_layers
-var template: NavigationMesh : set = set_template
 var terrain: Node
 var player: Player
-var mesh_size := Vector3(256, 512, 256)
-var min_rebake_distance: float = 64.0
-var bake_cooldown: float = 1.0
-
-var log_timing: bool = false
-
 var _scene_geometry: NavigationMeshSourceGeometryData3D
 var _current_center := Vector3(INF,INF,INF)
-
 var _bake_task_id: int = -1
 var _bake_task_timer: float = 0.0
 var _bake_cooldown_timer: float = 0.0
 var _nav_region: NavigationRegion3D
+
+
+# TODO inline setters
+var is_enabled: bool = true : set = set_enabled
+func set_enabled(p_value: bool) -> void:
+	is_enabled = p_value
+	if _nav_region:
+		_nav_region.enabled = is_enabled
+	set_process(is_enabled and template)
+
+var enter_cost: float = 0.0 : set = set_enter_cost
+func set_enter_cost(p_value: bool) -> void:
+	enter_cost = p_value
+	if _nav_region:
+		_nav_region.enter_cost = enter_cost
+
+var travel_cost: float = 1.0 : set = set_travel_cost
+func set_travel_cost(p_value: bool) -> void:
+	travel_cost = p_value
+	if _nav_region:
+		_nav_region.travel_cost = travel_cost
+
+var navigation_layers: int = 1 : set = set_navigation_layers
+func set_navigation_layers(p_value: int) -> void:
+	navigation_layers = p_value
+	if _nav_region:
+		_nav_region.navigation_layers = navigation_layers
+
+var template: NavigationMesh : set = set_template
+func set_template(p_value: NavigationMesh) -> void:
+	template = p_value
+	set_process(is_enabled and template)
+	_update_map_cell_size()
 
 
 func _ready():
@@ -45,38 +66,6 @@ func _ready():
 	# your scatter nodes have finished setting up. Here, we just defer one frame so that nodes
 	# after this one in the tree get set up first
 	parse_scene.call_deferred()
-
-
-func set_enabled(p_value: bool) -> void:
-	is_enabled = p_value
-	if _nav_region:
-		_nav_region.enabled = is_enabled
-	set_process(is_enabled and template)
-
-
-func set_enter_cost(p_value: bool) -> void:
-	enter_cost = p_value
-	if _nav_region:
-		_nav_region.enter_cost = enter_cost
-
-
-func set_travel_cost(p_value: bool) -> void:
-	travel_cost = p_value
-	if _nav_region:
-		_nav_region.travel_cost = travel_cost
-
-
-func set_navigation_layers(p_value: int) -> void:
-	navigation_layers = p_value
-	if _nav_region:
-		_nav_region.navigation_layers = navigation_layers
-
-
-func set_template(p_value: NavigationMesh) -> void:
-	template = p_value
-	set_process(is_enabled and template)
-	_update_map_cell_size()
-
 
 func parse_scene() -> void:
 	if not template:
@@ -106,24 +95,24 @@ func _process(p_delta: float) -> void:
 	var track_pos := player.global_position
 	if player:
 		# Center on where the player is likely _going to be_:
-		track_pos += player.velocity * bake_cooldown
+		track_pos += player.velocity * GroundConstants.BAKE_COOLDOWN
 	
-	if track_pos.distance_squared_to(_current_center) >= min_rebake_distance * min_rebake_distance:
+	if track_pos.distance_squared_to(_current_center) >= GroundConstants.MIN_REBASE_DIST * GroundConstants.MIN_REBASE_DIST:
 		_current_center = track_pos
 		_rebake(_current_center)
 
 
-func _rebake(p_center: Vector3) -> void:
+func _rebake(p_center: Vector3) -> void: # TODO is never called
 	if not template:
 		return
 	_bake_task_id = WorkerThreadPool.add_task(_task_bake.bind(p_center), false, "RuntimeNavigationBaker")
 	_bake_task_timer = 0.0
-	_bake_cooldown_timer = bake_cooldown
+	_bake_cooldown_timer = GroundConstants.BAKE_COOLDOWN
 
 
 func _task_bake(p_center: Vector3) -> void:
 	var nav_mesh: NavigationMesh = template.duplicate()
-	nav_mesh.filter_baking_aabb = AABB(-mesh_size * 0.5, mesh_size)
+	nav_mesh.filter_baking_aabb = AABB(-GroundConstants.MESH_SIZE * 0.5, GroundConstants.MESH_SIZE)
 	nav_mesh.filter_baking_aabb_offset = p_center
 	var source_geometry: NavigationMeshSourceGeometryData3D
 	source_geometry = _scene_geometry.duplicate()

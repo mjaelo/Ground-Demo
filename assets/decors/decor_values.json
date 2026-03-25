@@ -5,14 +5,16 @@
       "weight": 60,
       "spawn_chance": 0.4,
       "max_slope": 18.0,
-      "visibility_range": 80.0
+      "visibility_range": 80.0,
+      "priority": 0
     },
     {
       "name": "Tree",
       "weight": 10,
       "spawn_chance": 0.005,
       "max_slope": 15.0,
-      "visibility_range": 200.0
+      "visibility_range": 200.0,
+      "priority": 5
     },
     {
       "name": "Rock",
@@ -20,7 +22,8 @@
       "spawn_chance": 0.01,
       "max_slope": 18.0,
       "mesh_size": [5, 5],
-      "visibility_range": 150.0
+      "visibility_range": 150.0,
+      "priority": 2
     },
     {
       "name": "House",
@@ -28,7 +31,8 @@
       "spawn_chance": 0.003,
       "max_slope": 15.0,
       "mesh_size": [50, 50],
-      "visibility_range": 400.0
+      "visibility_range": 400.0,
+      "priority": 10
     }
   ]
 }

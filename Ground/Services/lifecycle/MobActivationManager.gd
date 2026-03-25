@@ -6,47 +6,47 @@ class_name MobActivationManager
 var _enemy: Enemy = null
 var _player: Player = null
 var _nav_baker: RuntimeNavigationBaker
-var _terrain_manager: GroundManager
-var _activated: bool = false
-var _player_spawn_done: bool = false
-
-func initialize(enemy: Enemy, player: Player, nav_baker: RuntimeNavigationBaker, terrain_manager: GroundManager) -> void:
+var parent: Ground
+var is_enemy_activated: bool = false
+var is_player_activated: bool = false
+	
+func initialize(enemy: Enemy, player: Player, nav_baker: RuntimeNavigationBaker, _parent: Ground) -> void:
 	_enemy = enemy
 	_player = player
 	_nav_baker = nav_baker
-	_terrain_manager = terrain_manager
+	parent = _parent
 	_enemy.set_process(false)
 	_enemy.set_physics_process(false)
+	# When the initial bulk load finishes, spawn the player and activate mobs
+	nav_baker.bake_finished.connect(on_nav_bake_finished)
 
 ## Called by GroundManager.initial_load_complete signal.
 ## Spawns the player on the terrain and activates the enemy.
-func on_initial_load_complete() -> void:
-	if _player_spawn_done:
+func activate_mobs() -> void:
+	if is_player_activated:
 		return
-	var h: float = _terrain_manager.get_height_at(_player.global_transform.origin)
-	print("[Ground] Initial load complete — spawning player at height %.1f" % h)
-	_player.global_transform.origin.y = h + 5.0
+	# Ensure height is explicitly cast to float (some return values can be Variant)
+	var height_at_player: float = float(parent.chunk_manager.get_height_at(_player.global_transform.origin))
+	_player.global_transform.origin.y = height_at_player + 5.0
 	_player.gravity_enabled = true
 	_player.collision_enabled = true
-	_player_spawn_done = true
+	is_player_activated = true
 	_activate_enemy()
 
 func _activate_enemy() -> void:
-	if _activated:
+	if is_enemy_activated:
 		return
-	_activated = true
+	is_enemy_activated = true
 	var player_pos: Vector3 = _player.global_transform.origin
 	var enemy_xz: Vector3 = player_pos + Vector3(30, 0, 30)
-	var h: float = _terrain_manager.get_height_at(enemy_xz)
-	_enemy.global_transform.origin = Vector3(enemy_xz.x, h + 1.0, enemy_xz.z)
+	# Cast height to float to avoid Variant type inference
+	var height_at_enemy: float = float(parent.chunk_manager.get_height_at(enemy_xz))
+	_enemy.global_transform.origin = Vector3(enemy_xz.x, height_at_enemy + 1.0, enemy_xz.z)
 	_enemy.set_process(true)
 	_enemy.set_physics_process(true)
 	_enemy.enable_navigation()
 	_nav_baker._current_center = Vector3(INF, INF, INF)
 
-func on_nav_bake_finished() -> void:
-	if _activated:
+func on_nav_bake_finished() -> void: # TODO is it called?
+	if is_enemy_activated:
 		_enemy.enable_navigation()
-
-var is_activated: bool:
-	get: return _activated

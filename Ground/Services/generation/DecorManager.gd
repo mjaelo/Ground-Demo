@@ -3,142 +3,95 @@ class_name DecorManager
 # TODO house scenes are not rotated
 
 # asset_name (lowercase) -> PackedScene
-var _scene_assets: Dictionary = {}
+var decor_scenes: Dictionary = {}
+var decor_datas: Array[DecorData] = []
+var _scene_nodes: Dictionary = {} # TODO refactor. idk what that is
+var parent: Ground
 
-var _placement_layers := []
-var _scene_nodes: Dictionary = {}
+func initialize(_parent: Ground) -> void:
+	parent = _parent
 
-func initialize(_terrain: Node) -> void:
-	_load_assets_from_disk()
-	_load_placement_rules()
-
-func _load_assets_from_disk() -> void:
-	var dir := DirAccess.open(GroundConstants.MESH_ASSETS_PATH)
+func _init() -> void:
+	#	load_decor_scenes
+	var dir := DirAccess.open(GroundConstants.DECOR_PATH)
 	if dir == null:
-		push_error("Cannot open mesh assets directory: %s" % GroundConstants.MESH_ASSETS_PATH)
+		push_error("Cannot open decor directory: %s" % GroundConstants.DECOR_PATH)
 		return
 	dir.list_dir_begin()
-	var file_name := dir.get_next()
-	while file_name != "":
-		if not dir.current_is_dir() and file_name.get_extension().to_lower() == "tscn":
-			var scene: PackedScene = load(GroundConstants.MESH_ASSETS_PATH + file_name)
-			if scene:
-				var key: String = file_name.get_basename().to_lower()
-				_scene_assets[key] = scene
-		file_name = dir.get_next()
+	var decor_file_name := dir.get_next()
+	while decor_file_name != "":
+		if not dir.current_is_dir() and decor_file_name.get_extension().to_lower() == "tscn":
+			var decor_scene: PackedScene = load(GroundConstants.DECOR_PATH + decor_file_name)
+			if decor_scene:
+				var decor_name: String = decor_file_name.get_basename().to_lower()
+				decor_scenes[decor_name] = decor_scene
+		decor_file_name = dir.get_next()
 	dir.list_dir_end()
+	
+	#	load_decor_datas
+	decor_datas.append_array(GameUtils.load_from_json(GroundConstants.DECOR_VALUES_FILE, DecorData, "decors"))
+	for decor: DecorData in decor_datas:
+		var key: String = decor.decor_name.to_lower()
+		if not decor_scenes.has(key):
+			push_warning("placement_rules: no loaded scene matches name '%s', layer will be skipped" % decor.decor_name)
 
-func _load_placement_rules() -> void:
-	_placement_layers = GameUtils.load_from_json(GroundConstants.DECOR_VALUES_FILE, DecorData, "decors") as Array[DecorData]
-	for decor in _placement_layers:
-		var key: String = decor.asset_name.to_lower()
-		if not _scene_assets.has(key):
-			push_warning("placement_rules: no loaded scene matches name '%s', layer will be skipped" % decor.asset_name)
-
-# Returns a Dictionary of asset_name (String) -> Array[Transform3D].
-func generate_transforms(region_origin_m: Vector3, region_size: int, height_sampler: Callable, normal_sampler: Callable, biome_manager: BiomeManager = null) -> Dictionary:
+func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, blocked: Dictionary, decor_d: DecorData = null) -> Dictionary:
 	var step: int = max(1, GroundConstants.DECOR_STEP)
 	var origin: Vector3 = region_origin_m + Vector3(-region_size * 0.5, 0, -region_size * 0.5)
-	var rng := RandomNumberGenerator.new()
-	rng.randomize()
-	if _placement_layers.is_empty():
+	var local_rng :=  RandomNumberGenerator.new()
+	if decor_datas.is_empty():
 		push_warning("No placement layers found")
 
-	# Split layers: large-footprint assets are placed first so their blocked
-	# zones are established before small assets fill remaining space.
-	var large_layers: Array[DecorData] = []
-	var small_layers: Array[DecorData] = []
-	for decor in _placement_layers:
-		if decor.mesh_size.x > 0 or decor.mesh_size.y > 0:
-			large_layers.append(decor)
-		else:
-			small_layers.append(decor)
+	var transforms_by_decor_name: Dictionary = {}
+	for x in range(0, region_size, step):
+		for z in range(0, region_size, step):
+			var gx: int = int(float(x) / float(step))
+			var gz: int = int(float(z) / float(step))
+			if blocked.has(Vector2i(gx, gz)):
+				continue
+			if local_rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
+				continue
+			var pos_x := x + origin.x
+			var pos_z := z + origin.z
+			if is_decor_allowed_in_biome(decor_d, pos_x, pos_z): # TODO shouldnt decor_d be allowed in this point?
+				if can_place_decor(pos_x, pos_z, local_rng, decor_d):
+					# Pick a random Y rotation: 0, 90, 180, or 270 degrees
+					var rot_index: int = local_rng.randi() % 4
+					var rot_y: float = rot_index * PI * 0.5
+					place_decor(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y)
+	return transforms_by_decor_name
 
-	# transforms_by_name: asset_name (lowercase) -> Array[Transform3D]
-	var transforms_by_name: Dictionary = {}
-	# Tracks grid coords (Vector2i in step-space) blocked by large-footprint assets.
-	var blocked: Dictionary = {}
+## Return a list of DecorData that are allowed in the biome covering the supplied chunk origin.
+func get_allowed_decors_for_biome(biome: BiomeData) -> Array[DecorData]:
+	var found :Array[DecorData] = []
+	for d in decor_datas:
+		if d.decor_name in biome.allowed_decor_ids:
+			found.append(d)
+	# Sort by priority descending (higher values spawn earlier)
+	found.sort_custom(func (a: DecorData, b: DecorData) -> int: return 0 if a.priority == b.priority else -1 if a.priority > b.priority else 1)
+	return found
 
-	# Pass 1: large-footprint assets only.
-	if not large_layers.is_empty():
-		for x in range(0, region_size, step):
-			for z in range(0, region_size, step):
-				var gx: int = int(x / step)
-				var gz: int = int(z / step)
-				if blocked.has(Vector2i(gx, gz)):
-					continue
-				if rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
-					continue
-				var pos_x := x + origin.x
-				var pos_z := z + origin.z
-				var filtered_layers := filter_layers_by_biome(large_layers, pos_x, pos_z,biome_manager)
-				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, filtered_layers, height_sampler, normal_sampler)
-
-	# Pass 2: small assets, skipping coords blocked by large assets.
-	if not small_layers.is_empty():
-		for x in range(0, region_size, step):
-			for z in range(0, region_size, step):
-				var gx: int = int(x / step)
-				var gz: int = int(z / step)
-				if blocked.has(Vector2i(gx, gz)):
-					continue
-				if rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
-					continue
-				var pos_x := x + origin.x
-				var pos_z := z + origin.z
-				var filtered_layers := filter_layers_by_biome(small_layers, pos_x, pos_z,biome_manager)
-				_pick_and_place(transforms_by_name, pos_x, pos_z, rng, blocked, gx, gz, step, filtered_layers, height_sampler, normal_sampler)
-
-	return transforms_by_name
-
-
-	# Helper to filter decor layers by biome at a given world position
-func filter_layers_by_biome(layers: Array[DecorData], wx: float, wz: float, biome_manager: BiomeManager) -> Array[DecorData]:
-	if biome_manager == null:
-		return layers
-	var biome: BiomeData = biome_manager.get_biome_at(wx, wz)
+# Helper to filter decor layers by biome at a given world position
+func is_decor_allowed_in_biome(decor: DecorData, wx: float, wz: float) -> bool:
+	var biome: BiomeData = parent.biome_manager.get_biome_at(wx, wz)
 	var allowed: Array = biome.allowed_decor_ids
-	return layers.filter(func(d): return d.asset_name in allowed)
+	return decor.decor_name in allowed
 
+func can_place_decor(pos_x: float, pos_z: float, rng: RandomNumberGenerator, decor: DecorData) -> bool:
+	var center_h: float = parent.chunk_manager.sample_height(pos_x, pos_z)
+	var center_slope: float = _slope_deg_at(pos_x, pos_z)
 
-func _pick_and_place(transforms_by_name: Dictionary, pos_x: float, pos_z: float, rng: RandomNumberGenerator, blocked: Dictionary, gx: int, gz: int, step: int, layers: Array[DecorData], height_sampler: Callable, normal_sampler: Callable) -> void:
-	var center_h: float = height_sampler.call(pos_x, pos_z)
-	var center_slope: float = _slope_deg_at(pos_x, pos_z, normal_sampler)
-
-	var candidates: Array[DecorData] = []
-	var weights: Array[float] = []
-	var total_weight: float = 0.0
-	for decor in layers:
-		if decor.asset_name.is_empty():
-			continue
-		if not _scene_assets.has(decor.asset_name.to_lower()):
-			continue
-		if decor.weight <= 0.0:
-			continue
-		if center_h < decor.min_height or center_h > decor.max_height:
-			continue
-		# Slope check: for assets with a footprint, check all covered sample points.
-		if not _check_slope_footprint(decor, pos_x, pos_z, center_slope, normal_sampler):
-			continue
-		if rng.randf() >= decor.spawn_chance:
-			continue
-		total_weight += decor.weight
-		candidates.append(decor)
-		weights.append(total_weight)
-	if candidates.is_empty():
-		return
-	var roll: float = rng.randf() * total_weight
-	# Pick a random Y rotation: 0, 90, 180, or 270 degrees
-	var rot_index: int = rng.randi() % 4
-	var rot_y: float = rot_index * PI * 0.5
-	for i in candidates.size():
-		if roll <= weights[i]:
-			_place_instance(candidates[i], transforms_by_name, pos_x, pos_z, blocked, gx, gz, step, height_sampler, rot_y)
-			return
-	_place_instance(candidates[-1], transforms_by_name, pos_x, pos_z, blocked, gx, gz, step, height_sampler, rot_y)
+	if (decor.decor_name.is_empty() || !decor_scenes.has(decor.decor_name.to_lower()) 
+	|| 	decor.weight <= 0.0 || 	center_h < decor.min_height or center_h > decor.max_height 
+	|| !is_slope_allowed(decor, pos_x, pos_z, center_slope) 
+	||	rng.randf() >= decor.spawn_chance):
+		return false
+	
+	var roll: float = rng.randf() * decor.weight
+	return roll <= decor.weight
 
 ## Check slope at the center and, for meshes with a footprint, at the perimeter too.
-func _check_slope_footprint(decor: DecorData, cx: float, cz: float, center_slope: float, normal_sampler: Callable) -> bool:
+func is_slope_allowed(decor: DecorData, cx: float, cz: float, center_slope: float) -> bool:
 	if center_slope > decor.max_slope:
 		return false
 	var ms: Vector2i = decor.mesh_size
@@ -147,43 +100,34 @@ func _check_slope_footprint(decor: DecorData, cx: float, cz: float, center_slope
 	# Sample slope at footprint corners and edge midpoints.
 	var hx: float = ms.x * 0.5
 	var hz: float = ms.y * 0.5
-	var sample_offsets: Array[Vector2] = [
-		Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz),  # corners
-		Vector2(0, -hz), Vector2(0, hz), Vector2(-hx, 0), Vector2(hx, 0),         # edge midpoints
-	]
-	for off in sample_offsets:
-		var slope: float = _slope_deg_at(cx + off.x, cz + off.y, normal_sampler)
+	var corner_offsets: Array[Vector2] = [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz) ]
+	for off in corner_offsets:
+		var slope: float = _slope_deg_at(cx + off.x, cz + off.y)
 		if slope > decor.max_slope:
 			return false
 	return true
 
-## Place the mesh at the highest ground point within its footprint so Y=0 vertices
-## are never above ground.
-func _place_instance(decor: DecorData, transforms_by_name: Dictionary, pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, height_sampler: Callable, rot_y: float = 0.0) -> void:
-	var key: String = decor.asset_name.to_lower()
-	var best_h: float = height_sampler.call(pos_x, pos_z)
+## Place the decor at the lowest available Y level
+func place_decor(decor: DecorData, transforms_by_name: Dictionary, pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, rot_y: float = 0.0) -> void:
+	var decor_name: String = decor.decor_name.to_lower()
+	var best_h: float = parent.chunk_manager.sample_height(pos_x, pos_z)
 
 	var ms: Vector2i = decor.mesh_size
 	if ms.x > 0 or ms.y > 0:
-		# Sample height at corners, edge midpoints and a few interior points.
+		# Sample height at corners
 		var hx: float = ms.x * 0.5
 		var hz: float = ms.y * 0.5
-		var sample_offsets: Array[Vector2] = [
-			Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz),
-			Vector2(0, -hz), Vector2(0, hz), Vector2(-hx, 0), Vector2(hx, 0),
-			Vector2(-hx * 0.5, -hz * 0.5), Vector2(hx * 0.5, -hz * 0.5),
-			Vector2(-hx * 0.5, hz * 0.5), Vector2(hx * 0.5, hz * 0.5),
-		]
+		var sample_offsets: Array[Vector2] = [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]
 		for off in sample_offsets:
-			var h: float = height_sampler.call(pos_x + off.x, pos_z + off.y)
-			if h > best_h:
+			var h: float = parent.chunk_manager.sample_height(pos_x + off.x, pos_z + off.y)
+			if h < best_h:
 				best_h = h
 
-	if not transforms_by_name.has(key):
-		transforms_by_name[key] = []
-	# Build a transform with Y rotation applied
 	var rot_basis := Basis(Vector3.UP, rot_y)
-	(transforms_by_name[key] as Array).push_back(Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z)))
+	var decor_transforms := Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z))
+	if !transforms_by_name.has(decor_name):
+		transforms_by_name[decor_name] = []
+	transforms_by_name[decor_name].append(decor_transforms)
 
 	# Block grid coords covered by this asset's mesh_size.
 	if ms.x > 0 or ms.y > 0:
@@ -193,41 +137,108 @@ func _place_instance(decor: DecorData, transforms_by_name: Dictionary, pos_x: fl
 			for dz in range(-rz, rz + 1):
 				blocked[Vector2i(gx + dx, gz + dz)] = true
 
-static func _slope_deg_at(wx: float, wz: float, normal_sampler: Callable) -> float:
-	var n: Vector3 = normal_sampler.call(wx, wz)
+func _slope_deg_at(wx: float, wz: float) -> float:
+	var n: Vector3 = parent.chunk_manager.sample_normal(wx, wz)
 	var ny: float = clamp(n.dot(Vector3.UP), -1.0, 1.0)
 	# atan2(sin(theta), cos(theta)) == theta and sin(theta)=sqrt(1-ny^2)
 	return rad_to_deg(atan2(sqrt(max(0.0, 1.0 - ny * ny)), ny))
 
-func spawn_meshes(asset_name: String, transforms: Array, parent: Node, loc: Vector2i) -> void:
-	var key: String = asset_name.to_lower()
-	var scene: PackedScene = _scene_assets.get(key, null)
+func spawn_meshes(decor_name: String, transforms: Array, loc: Vector2i) -> void:
+	var scene: PackedScene = decor_scenes.get(decor_name, null)
 	if not scene:
-		push_warning("spawn_meshes: no scene loaded for '%s'" % asset_name)
+		push_warning("spawn_meshes: no scene loaded for '%s'" % decor_name)
 		return
 
 	# Find visibility_range from placement rules for this asset.
 	var vis_range: float = 0.0
-	for decor in _placement_layers:
-		if decor.asset_name.to_lower() == key and decor.visibility_range > 0.0:
+	for decor in decor_datas:
+		if decor.decor_name.to_lower() == decor_name and decor.visibility_range > 0.0:
 			vis_range = decor.visibility_range
 			break
 
 	# Use a stable int slot key derived from the asset name hash.
-	var name_hash: int = key.hash()
+	var name_hash: int = decor_name.hash()
 	var slot_key := Vector3i(loc.x, loc.y, name_hash)
 	var nodes: Array = _scene_nodes.get(slot_key, [])
+	if transforms.size() == 0:
+		# Nothing to spawn
+		_scene_nodes[slot_key] = nodes
+		return
+
+	# Heuristic: attempt to batch into a MultiMeshInstance3D when the scene is simple
+	# (only a single MeshInstance3D, no collision/physics nodes and no scripts).
+	var decor_multimesh_data := get_decor_multimesh_data(scene)
+	
+	if decor_multimesh_data.can_multimesh:
+		nodes.append(get_meshes_multimesh(transforms,decor_multimesh_data.mesh_res,decor_multimesh_data.mesh_local_transform, vis_range))
+	else:
+		nodes.append_array(get_meshes_simple(transforms, vis_range, scene))
+	_scene_nodes[slot_key] = nodes
+
+func get_decor_multimesh_data(scene: PackedScene) ->Dictionary:
+	var can_multimesh: bool = true
+	var mesh_res: Mesh = null
+	var mesh_local_transform: Transform3D = Transform3D.IDENTITY
+	var temp_inst: Node = scene.instantiate()
+	# Find MeshInstance3D and detect disqualifying nodes
+	var mesh_instances := []
+	for n in temp_inst.get_children():
+		if n is MeshInstance3D:
+			mesh_instances.append(n)
+		elif n is CollisionObject3D or n is Area3D or n.get_script() != null:
+			can_multimesh = false
+	# Also inspect root itself
+	if temp_inst is MeshInstance3D:
+		mesh_instances.append(temp_inst)
+	if temp_inst.get_script() != null:
+		can_multimesh = false
+
+	if mesh_instances.size() == 1 and can_multimesh:
+		mesh_res = (mesh_instances[0] as MeshInstance3D).mesh
+		mesh_local_transform = (mesh_instances[0] as MeshInstance3D).transform
+		var s := mesh_local_transform.basis.get_scale()
+		if abs(s.x - 1.0) > 0.001 or abs(s.y - 1.0) > 0.001 or abs(s.z - 1.0) > 0.001:
+			can_multimesh = false
+		if mesh_local_transform.origin.length() > 0.001:
+			can_multimesh = false
+	else:
+		can_multimesh = false
+
+	# Free temporary instance used for inspection
+	if is_instance_valid(temp_inst):
+		temp_inst.free()
+		
+	return {
+		"can_multimesh": can_multimesh,
+		"mesh_res": mesh_res,
+		"mesh_local_transform": mesh_local_transform
+	}
+		
+func get_meshes_multimesh(transforms:Array, mesh_res: Mesh, mesh_local_transform: Transform3D, vis_range: float) -> MultiMeshInstance3D: # Build a MultiMesh and a single MultiMeshInstance3D for this chunk+asset
+	var mm: MultiMesh = MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.instance_count = transforms.size()
+	mm.mesh = mesh_res
+	for i in range(transforms.size()):
+		# Bake the mesh's local transform (scale/offset) into the instance transform
+		mm.set_instance_transform(i, transforms[i] * mesh_local_transform)
+	var mm_inst: MultiMeshInstance3D = MultiMeshInstance3D.new()
+	mm_inst.multimesh = mm
+	parent.get_node("Chunks").add_child(mm_inst)
+	if vis_range > 0.0:
+		_apply_visibility_range_recursive(mm_inst, vis_range)
+	return mm_inst
+	
+func get_meshes_simple(transforms:Array, vis_range: float, scene: PackedScene) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
+	var nodes: Array[Node3D] = []
 	for t in transforms:
 		var node: Node3D = scene.instantiate()
-		# Set local transform before add_child so _ready() sees the correct position.
-		# global_transform is unreliable before the node enters the tree; since parent
-		# is a plain Node (no 3-D offset) local == global, so this is equivalent.
 		node.transform = t
-		parent.add_child(node)
+		parent.get_node("Chunks").add_child(node)
 		if vis_range > 0.0:
 			_apply_visibility_range_recursive(node, vis_range)
 		nodes.append(node)
-	_scene_nodes[slot_key] = nodes
+	return nodes
 
 func _apply_visibility_range_recursive(node: Node, range_end: float) -> void:
 	if node is GeometryInstance3D:
@@ -236,7 +247,7 @@ func _apply_visibility_range_recursive(node: Node, range_end: float) -> void:
 	for child in node.get_children():
 		_apply_visibility_range_recursive(child, range_end)
 
-func clear_scene_meshes(loc: Vector2i) -> void:
+func clear_decors(loc: Vector2i) -> void:
 	var to_erase: Array = []
 	for slot_key in _scene_nodes.keys():
 		if slot_key is Vector3i and slot_key.x == loc.x and slot_key.y == loc.y:
@@ -246,3 +257,6 @@ func clear_scene_meshes(loc: Vector2i) -> void:
 			if is_instance_valid(node):
 				node.queue_free()
 		_scene_nodes.erase(slot_key)
+	
+	parent.ground_thread_manager._decor_priority_index_by_loc.erase(loc)
+	parent.ground_thread_manager._decor_blocked_by_loc.erase(loc)

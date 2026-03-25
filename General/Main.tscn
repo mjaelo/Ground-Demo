@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://dxfbgbfaxnltx" path="res://General/Main.gd" id="1_r55pc"]
 [ext_resource type="PackedScene" uid="uid://domhm87hbhbg1" path="res://Mob/Player.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://bb2lp50sjndus" path="res://General/Environment.tscn" id="3"]
-[ext_resource type="PackedScene" uid="uid://dt4xak0xv0xyt" path="res://Ground/Ground.tscn" id="4_puha4"]
+[ext_resource type="PackedScene" uid="uid://dthu7jq6fpkge" path="res://Ground/Ground.tscn" id="4_puha4"]
 [ext_resource type="PackedScene" uid="uid://d2jihfohphuue" path="res://UI/UI.tscn" id="5"]
 
 [node name="Main" type="Node" unique_id=487858458]
