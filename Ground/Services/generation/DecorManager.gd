@@ -4,7 +4,8 @@ class_name DecorManager
 
 # asset_name (lowercase) -> PackedScene
 var decor_scenes: Dictionary = {}
-var decor_datas: Array[DecorData] = []
+var decor_datas: Array[DecorData] = [] # TODO i dont need 2 variables, just sort it straight away
+var decor_datas_sorted: Array[DecorData] = []
 var _scene_nodes: Dictionary = {} # TODO refactor. idk what that is
 var parent: Ground
 
@@ -34,6 +35,12 @@ func _init() -> void:
 		var key: String = decor.decor_name.to_lower()
 		if not decor_scenes.has(key):
 			push_warning("placement_rules: no loaded scene matches name '%s', layer will be skipped" % decor.decor_name)
+	decor_datas_sorted = decor_datas.duplicate(false)
+	decor_datas_sorted.sort_custom(func(a: DecorData, b: DecorData) -> bool:
+		if a.priority == b.priority:
+			return a.decor_name.to_lower() < b.decor_name.to_lower()
+		return a.priority > b.priority
+	)
 
 func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, blocked: Dictionary, decor_d: DecorData = null) -> Dictionary:
 	var step: int = max(1, GroundConstants.DECOR_STEP)
@@ -41,19 +48,20 @@ func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, b
 	var local_rng :=  RandomNumberGenerator.new()
 	if decor_datas.is_empty():
 		push_warning("No placement layers found")
+	var ignore_blocked: bool = decor_d != null and decor_d.mesh_size == Vector2i.ZERO
 
 	var transforms_by_decor_name: Dictionary = {}
 	for x in range(0, region_size, step):
 		for z in range(0, region_size, step):
 			var gx: int = int(float(x) / float(step))
 			var gz: int = int(float(z) / float(step))
-			if blocked.has(Vector2i(gx, gz)):
+			if !ignore_blocked and blocked.has(Vector2i(gx, gz)):
 				continue
 			if local_rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
 				continue
 			var pos_x := x + origin.x
 			var pos_z := z + origin.z
-			if is_decor_allowed_in_biome(decor_d, pos_x, pos_z): # TODO shouldnt decor_d be allowed in this point?
+			if is_decor_allowed_in_biome(decor_d, pos_x, pos_z):
 				if can_place_decor(pos_x, pos_z, local_rng, decor_d):
 					# Pick a random Y rotation: 0, 90, 180, or 270 degrees
 					var rot_index: int = local_rng.randi() % 4
@@ -67,8 +75,11 @@ func get_allowed_decors_for_biome(biome: BiomeData) -> Array[DecorData]:
 	for d in decor_datas:
 		if d.decor_name in biome.allowed_decor_ids:
 			found.append(d)
-	# Sort by priority descending (higher values spawn earlier)
-	found.sort_custom(func (a: DecorData, b: DecorData) -> int: return 0 if a.priority == b.priority else -1 if a.priority > b.priority else 1)
+	found.sort_custom(func(a: DecorData, b: DecorData) -> bool:
+		if a.priority == b.priority:
+			return a.decor_name.to_lower() < b.decor_name.to_lower()
+		return a.priority > b.priority
+	)
 	return found
 
 # Helper to filter decor layers by biome at a given world position
@@ -82,13 +93,11 @@ func can_place_decor(pos_x: float, pos_z: float, rng: RandomNumberGenerator, dec
 	var center_slope: float = _slope_deg_at(pos_x, pos_z)
 
 	if (decor.decor_name.is_empty() || !decor_scenes.has(decor.decor_name.to_lower()) 
-	|| 	decor.weight <= 0.0 || 	center_h < decor.min_height or center_h > decor.max_height 
+	||	center_h < decor.min_height or center_h > decor.max_height 
 	|| !is_slope_allowed(decor, pos_x, pos_z, center_slope) 
 	||	rng.randf() >= decor.spawn_chance):
 		return false
-	
-	var roll: float = rng.randf() * decor.weight
-	return roll <= decor.weight
+	return true
 
 ## Check slope at the center and, for meshes with a footprint, at the perimeter too.
 func is_slope_allowed(decor: DecorData, cx: float, cz: float, center_slope: float) -> bool:
@@ -165,6 +174,7 @@ func spawn_meshes(decor_name: String, transforms: Array, loc: Vector2i) -> void:
 		_scene_nodes[slot_key] = nodes
 		return
 
+	print("[DecorManager] spawn_meshes: ", decor_name, " count=", transforms.size(), " chunk=", loc)
 	# Heuristic: attempt to batch into a MultiMeshInstance3D when the scene is simple
 	# (only a single MeshInstance3D, no collision/physics nodes and no scripts).
 	var decor_multimesh_data := get_decor_multimesh_data(scene)
@@ -257,6 +267,5 @@ func clear_decors(loc: Vector2i) -> void:
 			if is_instance_valid(node):
 				node.queue_free()
 		_scene_nodes.erase(slot_key)
-	
-	parent.ground_thread_manager._decor_priority_index_by_loc.erase(loc)
-	parent.ground_thread_manager._decor_blocked_by_loc.erase(loc)
+		if parent.ground_thread_manager and parent.ground_thread_manager.decor_threads.has(loc):
+			parent.ground_thread_manager.decor_threads.erase(loc)

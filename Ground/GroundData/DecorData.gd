@@ -3,9 +3,7 @@ class_name DecorData
 
 ## Human-readable label matching the Terrain3DMeshAsset name or scene file stem.
 var decor_name: String = ""
-## Relative selection weight when competing against other eligible layers (0–100).
-var weight: float = 1.0
-## Probability (0–1) that this layer is even considered at a given grid point. Use low values for rare structures.
+## Probability (0–1) that this layer is considered at a given grid point. Use low values for rare structures.
 var spawn_chance: float = 1.0
 ## Maximum terrain slope (degrees) at which this decor may appear.
 var max_slope: float = 90.0
@@ -23,7 +21,6 @@ var priority: int = 0
 static func from_dict(d: Dictionary) -> DecorData:
 	var r := DecorData.new()
 	r.decor_name  = str(d.get("name",         ""))
-	r.weight      = float(d.get("weight",       1.0))
 	r.spawn_chance = float(d.get("spawn_chance", 1.0))
 	r.max_slope   = float(d.get("max_slope",    90.0))
 	if d.has("min_height"):

@@ -6,6 +6,8 @@ var chunks: Dictionary = {} # Vector2i -> GroundChunk
 var parent: Ground
 
 const BIOME_WEIGHT_THRESHOLD: float = 0.01
+const prominence_threshold: float = 0.1 # biome must cover at least 10% of pixels
+
 
 func initialize( _parent: Ground) -> void:
 	parent = _parent
@@ -14,28 +16,14 @@ func initialize( _parent: Ground) -> void:
 ## Returns a ChunkData populated with heightmap, splatmap, and dominant biome.
 ## Safe to call from a worker thread.
 func generate_chunk_data(loc: Vector2i, lod_tier: int) -> ChunkData:
-	var resolution: int
-	match lod_tier:
-		GroundConstants.LOD_LEVELS.CLOSE:
-			resolution = GroundConstants.close_resolution
-		GroundConstants.LOD_LEVELS.MEDIUM:
-			resolution = GroundConstants.medium_resolution
-		_:
-			resolution = GroundConstants.far_resolution
-
 	var data := ChunkData.new()
 	data.loc = loc
 	data.lod_tier = lod_tier
-	_generate_heightmap_and_splatmap(data, resolution)
-	return data
-
-func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
+	var resolution :int = (GroundConstants.close_resolution if lod_tier == GroundConstants.LOD_LEVELS.CLOSE else (GroundConstants.medium_resolution if lod_tier == GroundConstants.LOD_LEVELS.MEDIUM else GroundConstants.far_resolution))
 	var chunk_size: int = GroundConstants.CHUNK_SIZE
 	var base_x: float = data.loc.x * chunk_size
 	var base_z: float = data.loc.y * chunk_size
 	var inv_res: float = 1.0 / float(resolution - 1)
-	var heightmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RF)
-	var splatmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RGBA8)
 
 	# Cache biome weights for each pixel
 	var biome_count: int = parent.biome_manager.biomes.size()
@@ -45,8 +33,26 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 		biome_weight_totals[i] = 0.0
 	var cached_biome_weights: Array = []
 	cached_biome_weights.resize(resolution * resolution)
-
 	# --- Heightmap generation and biome weight accumulation ---
+	var heightmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RF)
+	heightmap = get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,biome_weight_totals)
+	# --- Determine prominent biomes: biomes whose total weight exceeds a threshold ---
+	var total_weight: float = 0.0
+	for w in biome_weight_totals:
+		total_weight += w
+	data.prominent_biomes = []
+	for i in range(biome_count):
+		if biome_weight_totals[i] >= total_weight * prominence_threshold:
+			data.prominent_biomes.append(parent.biome_manager.biomes[i])
+	# Splatmap generation (RGBA = texture weights)
+	var splatmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RGBA8)
+	splatmap = get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,lod_tier)
+	# --- Assign generated images to chunk data ---
+	data.heightmap = heightmap
+	data.splatmap = splatmap
+	return data
+
+func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,biome_weight_totals) ->Image:
 	for x in range(resolution):
 		var world_x: float = float(x) * inv_res * chunk_size + base_x
 		for y in range(resolution):
@@ -59,13 +65,10 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 			var h01: float =  parent.biome_manager.sample_height(parent.noise, world_x, world_z)
 			var h_world: float = GroundConstants.HEIGHT_MIN + h01 * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
 			heightmap.set_pixel(x, y, Color(h_world, 0, 0, 1))
-
-	# --- Determine dominant biome for the whole chunk ---
-	var dominant_biome_idx: int = biome_weight_totals.find(biome_weight_totals.max())
-	data.dominant_biome = parent.biome_manager.biomes[dominant_biome_idx]
-
-	# Splatmap generation (RGBA = texture weights)
-	if data.lod_tier == GroundConstants.LOD_LEVELS.FAR:
+	return heightmap
+			
+func get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,lod_tier) ->Image:
+	if lod_tier == GroundConstants.LOD_LEVELS.FAR:
 		# For far LOD, use LOD texture IDs for splatmap coloring
 		for x in range(resolution):
 			for y in range(resolution):
@@ -121,10 +124,7 @@ func _generate_heightmap_and_splatmap(data: ChunkData, resolution: int) -> void:
 					if steep_w > 0.001 and biome_data.steep_texture_id >= 0 and biome_data.steep_texture_id < 4:
 						tex_weights[biome_data.steep_texture_id] += steep_w
 				splatmap.set_pixel(x, y, _encode_weight_pixel(tex_weights))
-
-	# --- Assign generated images to chunk data ---
-	data.heightmap = heightmap
-	data.splatmap = splatmap
+	return splatmap
 
 ## Encode per-texture weights into an RGBA Color.
 ## tex_weights[0] → R, tex_weights[1] → G, tex_weights[2] → B, tex_weights[3] → A.
@@ -158,7 +158,6 @@ func update_visible_chunks(player_loc: Vector2i) -> void:
 		if chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE && loc.distance_to(player_loc) > GroundConstants.close_radius + 1 && chunk.are_decors_spawned && parent.decor_manager:
 			parent.decor_manager.clear_decors(loc)
 			chunk.are_decors_spawned = false
-
 
 func update_far_chunks(player_loc: Vector2i) -> void:
 	var far_r := GroundConstants.far_radius
@@ -198,7 +197,6 @@ func _remove_chunk(loc: Vector2i) -> void:
 		return
 	var chunk: GroundChunk = chunks[loc]
 	chunks.erase(loc)
-	chunk.allowed_decors = []
 	chunk.destroy()
 	parent.decor_manager.clear_decors(loc)
 

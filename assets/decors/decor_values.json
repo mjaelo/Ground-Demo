@@ -2,24 +2,21 @@
   "decors": [
     {
       "name": "Grass",
-      "weight": 60,
-      "spawn_chance": 0.4,
+      "spawn_chance": 0.24,
       "max_slope": 18.0,
       "visibility_range": 80.0,
-      "priority": 0
+      "priority": 1
     },
     {
       "name": "Tree",
-      "weight": 10,
-      "spawn_chance": 0.005,
+      "spawn_chance": 0.0005,
       "max_slope": 15.0,
       "visibility_range": 200.0,
       "priority": 5
     },
     {
       "name": "Rock",
-      "weight": 10,
-      "spawn_chance": 0.01,
+      "spawn_chance": 0.001,
       "max_slope": 18.0,
       "mesh_size": [5, 5],
       "visibility_range": 150.0,
@@ -27,7 +24,6 @@
     },
     {
       "name": "House",
-      "weight": 10,
       "spawn_chance": 0.003,
       "max_slope": 15.0,
       "mesh_size": [50, 50],

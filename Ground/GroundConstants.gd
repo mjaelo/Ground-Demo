@@ -21,6 +21,7 @@ const DECOR_STEP: int = 2 # Distance between placed mesh instances; lower = dens
 const DECOR_EMPTY_CHANCE: float = 0.3
 
 # ── CHUNKS ─────────────────────────────────────────
+const initial_chunk_radius: int = 1
 const close_radius: int = 4
 const medium_radius: int = 10 # TODO whats the point of medium?
 const far_radius: int = 22

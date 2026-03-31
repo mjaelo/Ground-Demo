@@ -9,6 +9,7 @@ class_name Ground
 # ── Terrain Generation ────────────────────────────────────────────────
 var noise := FastNoiseLite.new()
 var is_initial_load_done: bool = false
+var _focus_loc: Vector2i = Vector2i.ZERO
 
 # ── Node references ──────────────────────────────────────────────────
 var main: Main = null
@@ -36,12 +37,15 @@ func _ready() -> void:
 func _process(_delta: float) -> void: # TODO can be done more rarely
 	if Engine.is_editor_hint():
 		return
-	var player_loc := GroundUtils.world_pos_to_chunk_loc(main.player.global_transform.origin)
-	ground_thread_manager.handle_thread_results(player_loc)
-	chunk_manager.update_visible_chunks(player_loc)
+	var focus_loc := _focus_loc
+	if main != null and main.player != null:
+		focus_loc = GroundUtils.world_pos_to_chunk_loc(main.player.global_transform.origin)
+		_focus_loc = focus_loc
+	ground_thread_manager.handle_thread_results(focus_loc)
+	chunk_manager.update_visible_chunks(focus_loc)
 	if is_initial_load_done:
-		player_boundary.update(player_loc) 
-	elif are_nearby_chunks_loaded(player_loc):
+		player_boundary.update(focus_loc)
+	elif are_nearby_chunks_ready(focus_loc):
 		ground_thread_manager.set_steady_values()
 		mob_activation_manager.activate_mobs()
 		is_initial_load_done = true
@@ -68,14 +72,14 @@ func _create_managers() -> void:
 
 
 # ── Initial load check ────────────────────────────────────────────────
-func are_nearby_chunks_loaded(player_loc:Vector2i) ->bool:
-	var cr := GroundConstants.close_radius
+func are_nearby_chunks_ready(player_loc:Vector2i) ->bool:
+	var cr := GroundConstants.initial_chunk_radius
 	for x in range(player_loc.x - cr, player_loc.x + cr + 1):
 		for y in range(player_loc.y - cr, player_loc.y + cr + 1):
 			var loc := Vector2i(x, y)
 			if loc.distance_to(player_loc) > cr:
 				continue
 			var chunk: GroundChunk = chunk_manager.chunks.get(loc, null)
-			if !chunk || chunk.lod_tier > GroundConstants.LOD_LEVELS.CLOSE:
+			if !chunk || chunk.lod_tier > GroundConstants.LOD_LEVELS.CLOSE || !chunk.are_decors_spawned:
 				return false
 	return true
