@@ -44,7 +44,13 @@ static func build_chunk(p_data: ChunkData, shader_material: ShaderMaterial, add_
 		body.collision_layer = 1
 		body.collision_mask = 0
 		var col_shape := CollisionShape3D.new()
-		col_shape.shape = mesh.create_trimesh_shape()
+		col_shape.shape = _build_heightmap_shape(p_data.heightmap, res)
+		# HeightMapShape3D is centered at origin with 1-unit cell spacing.
+		# Scale by cell size and offset by half-chunk so it aligns with the visual mesh
+		# (which spans [0, CHUNK_SIZE] in X/Z relative to the MeshInstance3D position).
+		var cell_size: float = float(GroundConstants.CHUNK_SIZE) / float(res - 1)
+		col_shape.scale = Vector3(cell_size, 1.0, cell_size)
+		col_shape.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, 0.0, GroundConstants.CHUNK_SIZE * 0.5)
 		body.add_child(col_shape)
 		mi.add_child(body)
 		chunk.collision_body = body
@@ -57,6 +63,21 @@ func destroy() -> void:
 		mesh_instance.queue_free()
 	mesh_instance = null
 	collision_body = null
+
+## Build a HeightMapShape3D from a heightmap image.
+## HeightMapShape3D is far more nav-friendly than a trimesh — Godot's nav parser
+## handles it without flooding the rasterizer with thousands of tiny edges.
+static func _build_heightmap_shape(img: Image, res: int) -> HeightMapShape3D:
+	var shape := HeightMapShape3D.new()
+	shape.map_width = res
+	shape.map_depth = res
+	var heights := PackedFloat32Array()
+	heights.resize(res * res)
+	for z in res:
+		for x in res:
+			heights[z * res + x] = img.get_pixel(x, z).r
+	shape.map_data = heights
+	return shape
 
 # ── Mesh construction ─────────────────────────────────────────────────
 ## Builds an indexed mesh with smooth normals via generate_normals().

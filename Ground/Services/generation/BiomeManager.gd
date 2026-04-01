@@ -35,6 +35,19 @@ func _build_noises() -> void:
 		n.seed = noise_seed + i * 5137
 		_noises.append(n)
 
+## Returns a shallow clone of this BiomeManager with independently duplicated noise
+## objects. Call this once per worker thread so threads never share FastNoiseLite state.
+func make_thread_local() -> BiomeManager:
+	var copy := BiomeManager.new()
+	# BiomeManager._init() already loaded biomes/noises; replace noises with fresh copies.
+	copy.biomes = biomes          # BiomeData is read-only data — safe to share
+	copy.blend_sharpness = blend_sharpness
+	copy.height_blend_sharpness = height_blend_sharpness
+	copy._noises.clear()
+	for n in _noises:
+		copy._noises.append(n.duplicate() as FastNoiseLite)
+	return copy
+
 # ── Core API ──────────────────────────────────────────────────────────
 # Compute terrain height (0..1 fraction) at a world position.
 func sample_height(noise: FastNoiseLite, world_x: float, world_z: float) -> float:

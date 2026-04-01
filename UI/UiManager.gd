@@ -1,13 +1,16 @@
 extends Control
+class_name UiManager
 
-var player: Node
+var player: Player
 var visible_mode: int = 1
 @onready var label = $Label
 @onready var panel = $Label/Panel
 
-func _init() -> void:
+func init(_player:Player) -> void:
+	player = _player
 	RenderingServer.set_debug_generate_wireframes(true)
-
+	NavigationServer3D.set_debug_enabled(true)
+	# TODO start loading screen
 
 func _process(_delta) -> void:
 	label.text = "FPS: %d\n" % Engine.get_frames_per_second()

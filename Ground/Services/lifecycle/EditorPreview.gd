@@ -1,7 +1,7 @@
 @tool
 extends Node
 
-@onready var ground: Ground = get_parent()
+@onready var ground: GroundManager = get_parent()
 
 func _ready():
 	await ground.ready
@@ -41,7 +41,7 @@ func _editor_generate() -> void:
 			tex_data.texture = tex
 
 	var mat := _build_editor_shader_material(loaded_textures)
-	var parent:= Ground.new()
+	var parent:= GroundManager.new()
 	var generator := ChunkManager.new()
 	generator.initialize(parent)
 

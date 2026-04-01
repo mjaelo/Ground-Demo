@@ -3,13 +3,13 @@ class_name ChunkManager
 
 ## Generates heightmap, splatmap and biome data for terrain chunks.
 var chunks: Dictionary = {} # Vector2i -> GroundChunk
-var parent: Ground
+var parent: GroundManager
 
 const BIOME_WEIGHT_THRESHOLD: float = 0.01
 const prominence_threshold: float = 0.1 # biome must cover at least 10% of pixels
 
 
-func initialize( _parent: Ground) -> void:
+func initialize( _parent: GroundManager) -> void:
 	parent = _parent
 
 # ── Chunk generation ───────────────────────────────────────────────────
@@ -205,10 +205,22 @@ func sample_height(world_x: float, world_z: float) -> float:
 	var h: float = parent.biome_manager.sample_height(parent.noise, world_x, world_z)
 	return GroundConstants.HEIGHT_MIN + h * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
 
+## Thread-safe variant: uses a caller-owned BiomeManager/noise snapshot.
+func sample_height_ts(world_x: float, world_z: float, bm: BiomeManager, noise: FastNoiseLite) -> float:
+	var h: float = bm.sample_height(noise, world_x, world_z)
+	return GroundConstants.HEIGHT_MIN + h * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
+
 func sample_normal(world_x: float, world_z: float) -> Vector3:
 	var bh := sample_height(world_x, world_z)
 	var dx := sample_height(world_x + 1.0, world_z) - bh
 	var dz := sample_height(world_x, world_z + 1.0) - bh
+	return Vector3(-dx, 1.0, -dz).normalized()
+
+## Thread-safe variant.
+func sample_normal_ts(world_x: float, world_z: float, bm: BiomeManager, noise: FastNoiseLite) -> Vector3:
+	var bh := sample_height_ts(world_x, world_z, bm, noise)
+	var dx := sample_height_ts(world_x + 1.0, world_z, bm, noise) - bh
+	var dz := sample_height_ts(world_x, world_z + 1.0, bm, noise) - bh
 	return Vector3(-dx, 1.0, -dz).normalized()
 	
 func get_height_at(world_pos: Vector3) -> float:

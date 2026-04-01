@@ -1,19 +1,18 @@
 [gd_scene format=3 uid="uid://je44v17jo1na"]
 
 [ext_resource type="Script" uid="uid://dxfbgbfaxnltx" path="res://General/Main.gd" id="1_r55pc"]
-[ext_resource type="PackedScene" uid="uid://domhm87hbhbg1" path="res://Mob/Player.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://bb2lp50sjndus" path="res://General/Environment.tscn" id="3"]
-[ext_resource type="PackedScene" uid="uid://dthu7jq6fpkge" path="res://Ground/Ground.tscn" id="4_puha4"]
-[ext_resource type="PackedScene" uid="uid://d2jihfohphuue" path="res://UI/UI.tscn" id="5"]
+[ext_resource type="PackedScene" uid="uid://dthu7jq6fpkge" path="res://Ground/GroundManager.tscn" id="4_puha4"]
+[ext_resource type="PackedScene" uid="uid://d2jihfohphuue" path="res://UI/UiManager.tscn" id="5"]
+[ext_resource type="PackedScene" uid="uid://dkag17uoyj82l" path="res://Mob/MobManager.tscn" id="5_r55pc"]
 
 [node name="Main" type="Node" unique_id=487858458]
 script = ExtResource("1_r55pc")
 
 [node name="Environment" parent="." unique_id=1617233061 instance=ExtResource("3")]
 
-[node name="Player" parent="." unique_id=1826463096 instance=ExtResource("2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 512, 200, 512)
-
 [node name="UI" parent="." unique_id=246979442 instance=ExtResource("5")]
 
 [node name="Ground" parent="." unique_id=269219165 instance=ExtResource("4_puha4")]
+
+[node name="Mob" parent="." unique_id=509368117 instance=ExtResource("5_r55pc")]

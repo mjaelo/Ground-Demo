@@ -1,22 +1,41 @@
 extends Node
 class_name Main
 
+# ── Module references ──────────────────────────────────────────────────
+@onready var ground: GroundManager = $Ground
+@onready var ui: UiManager = $UI
+@onready var mob_manager: MobManager = $Mob
 
-# ── Node references ──────────────────────────────────────────────────
-@onready var player: Player = $Player
-@onready var ui: Control = $UI
-@onready var enemy: Enemy = $Ground/Enemy # TODO enemy should be spawned by the decor / chunk when it generates
+var is_activated: bool = false
 
-# Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-	_setup_ui_and_player()
+	ui.init(mob_manager.player)
+	mob_manager.init(ground)
+	ground.init(mob_manager.player, mob_manager.enemy)
+	await get_tree().process_frame
+
+func _process(_delta: float) -> void: # TODO can be done more rarely
+	if Engine.is_editor_hint():
+		return
+	var player_chunk_loc: Vector2i = mob_manager.get_player_chunk_loc()
 	
-func _setup_ui_and_player() -> void:
-	if ui and player:
-		ui.player = player
-		NavigationServer3D.set_debug_enabled(true)
-		player.gravity_enabled = false
-		player.collision_enabled = false
-		await get_tree().process_frame
+	if is_activated:
+		loaded_tick(player_chunk_loc)
+	else:
+		unloaded_tick(player_chunk_loc)
+		
+func loaded_tick(player_chunk_loc: Vector2i) -> void:
+	ground.loaded_tick(player_chunk_loc)
+
+func unloaded_tick(player_chunk_loc: Vector2i) -> void:
+	ground.unloaded_tick(player_chunk_loc)
+	if ground.are_nearby_chunks_ready(player_chunk_loc):
+		activate_modules()
+
+func activate_modules() -> void:
+	# TODO stop loading screen
+	ground.activate_ground()
+	mob_manager.activate()
+	is_activated = true

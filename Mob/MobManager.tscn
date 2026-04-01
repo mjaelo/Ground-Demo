@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://dkag17uoyj82l"]
+
+[ext_resource type="Script" uid="uid://dkf3t0fob8yq1" path="res://Mob/MobManager.gd" id="1_1w2lr"]
+[ext_resource type="PackedScene" uid="uid://domhm87hbhbg1" path="res://Mob/Player.tscn" id="2_bkemc"]
+[ext_resource type="PackedScene" uid="uid://di5fovhcyd7re" path="res://Mob/Enemy.tscn" id="3_0s1r5"]
+[ext_resource type="Script" uid="uid://brh8x1wnycrl5" path="res://Ground/Services/lifecycle/RuntimeNavigationBaker.gd" id="4_0v6v4"]
+
+[node name="MobManager" type="Node" unique_id=509368117]
+script = ExtResource("1_1w2lr")
+
+[node name="Player" parent="." unique_id=1760933612 instance=ExtResource("2_bkemc")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 512, 200, 512)
+
+[node name="Enemy" parent="." unique_id=1188175751 instance=ExtResource("3_0s1r5")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 540, 200, 540)
+
+[node name="NavBaker" type="Node" parent="." unique_id=933578976]
+script = ExtResource("4_0v6v4")

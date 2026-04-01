@@ -13,9 +13,9 @@ var max_chunks_per_frame: int = GroundConstants.STARTUP_CHUNKS_PER_FRAME
 var max_far_per_frame: int = GroundConstants.STARTUP_LOD_PER_FRAME
 var max_far_threads: int = GroundConstants.STARTUP_LOD_THREADS
 
-var parent: Ground = null
+var parent: GroundManager = null
 
-func initialize(_parent: Ground) -> void:
+func initialize(_parent: GroundManager) -> void:
 	parent = _parent
 
 func set_steady_values():
@@ -114,11 +114,11 @@ func _apply_decor_results(player_loc: Vector2i) -> void:
 		var all_decors: Array[DecorData] = parent.decor_manager.decor_datas_sorted
 		var next_idx: int = result.decor_idx + 1
 		if next_idx >= all_decors.size():
-			var biome_names := chunk.data.prominent_biomes.map(func(b: BiomeData): return b.biome_name)
-			print("[GroundThreadManager] Chunk ", loc, " decors done for biomes ", biome_names)
+			#var biome_names := chunk.data.prominent_biomes.map(func(b: BiomeData): return b.biome_name)
+			#print("[GroundThreadManager] Chunk ", loc, " decors done for biomes ", biome_names)
 			chunk.are_decors_spawned = true
 		else:
-			var allow_chain: bool = not parent.is_initial_load_done or loc.distance_to(player_loc) <= GroundConstants.close_radius + 1
+			var allow_chain: bool = not parent.is_activated or loc.distance_to(player_loc) <= GroundConstants.close_radius + 1
 			if allow_chain and decor_threads.size() < GroundConstants.MAX_DECOR_THREADS:
 				_start_decor_thread_for_decor_id(loc, next_idx, result.blocked)
 			elif not allow_chain:
@@ -192,8 +192,8 @@ func _start_decor_thread_for_decor_id(loc: Vector2i, decor_idx: int, blocked_in:
 		decor_idx += 1
 	if decor_idx >= all_decors.size():
 		# All decors exhausted for this chunk's biomes.
-		var biome_names := prominent_biomes.map(func(b: BiomeData): return b.biome_name)
-		print("[GroundThreadManager] Chunk ", loc, " decors done for biomes ", biome_names)
+		#var biome_names := prominent_biomes.map(func(b: BiomeData): return b.biome_name)
+		#print("[GroundThreadManager] Chunk ", loc, " decors done for biomes ", biome_names)
 		chunk.are_decors_spawned = true
 		return
 
@@ -201,12 +201,16 @@ func _start_decor_thread_for_decor_id(loc: Vector2i, decor_idx: int, blocked_in:
 	var chunk_size := GroundConstants.CHUNK_SIZE
 	var chunk_center := Vector3(loc.x * chunk_size + chunk_size * 0.5, 0, loc.y * chunk_size + chunk_size * 0.5)
 	var blocked_copy: Dictionary = blocked_in.duplicate(true)
+	# Create thread-local noise snapshots BEFORE entering the thread.
+	# FastNoiseLite is not thread-safe; each thread needs its own copy.
+	var thread_bm: BiomeManager = parent.biome_manager.make_thread_local()
+	var thread_noise: FastNoiseLite = parent.noise.duplicate() as FastNoiseLite
 	var thread := Thread.new()
 	decor_threads[loc] = thread
 	var callable := func() -> DecorThreadResult:
-		var tmap: Dictionary = parent.decor_manager.generate_transforms_for_decor(chunk_center, chunk_size, blocked_copy, decor)
+		var tmap: Dictionary = parent.decor_manager.generate_transforms_for_decor(chunk_center, chunk_size, blocked_copy, decor, thread_bm, thread_noise)
 		return DecorThreadResult.new().init(loc, tmap, decor, blocked_copy, decor_idx)
-	print("[GroundThreadManager] Starting decor thread for decor ", decor.decor_name, " at ", loc)
+	#print("[GroundThreadManager] Starting decor thread for decor ", decor.decor_name, " at ", loc)
 	if thread.start(callable) != OK:
 		push_error("[GroundThreadManager] Failed to start decor thread for %s" % str(loc))
 		decor_threads.erase(loc)

@@ -43,12 +43,18 @@ const STEADY_LOD_PER_FRAME: int = 30
 const STEADY_LOD_THREADS: int = 4
 
 # ── TERRAIN SHADER ────────────────────────────────────────────────────
-const TERRAIN_SHADER_PATH := "res://Ground/Services/terrain_blend.gdshader"
+const TERRAIN_SHADER_PATH := "res://assets/terrain_blend.gdshader"
 const TEXTURE_SCALE: float = 16.0
 
 # ── NOISE ─────────────────────────────────────────────────────────────
 const NOISE_FREQUENCY: float = 0.0009
 # ── NAVIGATION ─────────────────────────────────────────────────────────────
-const MESH_SIZE := Vector3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
-const MIN_REBASE_DIST: float = 64.0
-const BAKE_COOLDOWN: float = 1.0
+## XZ half-extent of the nav mesh bake area around the player.
+const NAV_BAKE_RADIUS: float = 1024.0
+## Full height window baked around the player's Y position.
+const NAV_BAKE_HEIGHT: float = 300.0
+const NAV_CELL_SIZE: float = 1.0
+const NAV_CELL_HEIGHT: float = 0.5
+## How far (XZ) the player must move before a rebake is triggered.
+const MIN_REBASE_DIST: float = 128.0
+const BAKE_COOLDOWN: float = 1.5

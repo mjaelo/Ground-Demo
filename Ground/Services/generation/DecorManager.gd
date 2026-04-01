@@ -7,9 +7,9 @@ var decor_scenes: Dictionary = {}
 var decor_datas: Array[DecorData] = [] # TODO i dont need 2 variables, just sort it straight away
 var decor_datas_sorted: Array[DecorData] = []
 var _scene_nodes: Dictionary = {} # TODO refactor. idk what that is
-var parent: Ground
+var parent: GroundManager
 
-func initialize(_parent: Ground) -> void:
+func initialize(_parent: GroundManager) -> void:
 	parent = _parent
 
 func _init() -> void:
@@ -42,10 +42,10 @@ func _init() -> void:
 		return a.priority > b.priority
 	)
 
-func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, blocked: Dictionary, decor_d: DecorData = null) -> Dictionary:
+func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, blocked: Dictionary, decor_d: DecorData, bm: BiomeManager, noise: FastNoiseLite) -> Dictionary:
 	var step: int = max(1, GroundConstants.DECOR_STEP)
 	var origin: Vector3 = region_origin_m + Vector3(-region_size * 0.5, 0, -region_size * 0.5)
-	var local_rng :=  RandomNumberGenerator.new()
+	var local_rng := RandomNumberGenerator.new()
 	if decor_datas.is_empty():
 		push_warning("No placement layers found")
 	var ignore_blocked: bool = decor_d != null and decor_d.mesh_size == Vector2i.ZERO
@@ -61,17 +61,16 @@ func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, b
 				continue
 			var pos_x := x + origin.x
 			var pos_z := z + origin.z
-			if is_decor_allowed_in_biome(decor_d, pos_x, pos_z):
-				if can_place_decor(pos_x, pos_z, local_rng, decor_d):
-					# Pick a random Y rotation: 0, 90, 180, or 270 degrees
+			if _is_decor_allowed_in_biome_ts(decor_d, pos_x, pos_z, bm):
+				if _can_place_decor_ts(pos_x, pos_z, local_rng, decor_d, bm, noise):
 					var rot_index: int = local_rng.randi() % 4
 					var rot_y: float = rot_index * PI * 0.5
-					place_decor(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y)
+					_place_decor_ts(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y, bm, noise)
 	return transforms_by_decor_name
 
 ## Return a list of DecorData that are allowed in the biome covering the supplied chunk origin.
 func get_allowed_decors_for_biome(biome: BiomeData) -> Array[DecorData]:
-	var found :Array[DecorData] = []
+	var found: Array[DecorData] = []
 	for d in decor_datas:
 		if d.decor_name in biome.allowed_decor_ids:
 			found.append(d)
@@ -82,63 +81,48 @@ func get_allowed_decors_for_biome(biome: BiomeData) -> Array[DecorData]:
 	)
 	return found
 
-# Helper to filter decor layers by biome at a given world position
-func is_decor_allowed_in_biome(decor: DecorData, wx: float, wz: float) -> bool:
-	var biome: BiomeData = parent.biome_manager.get_biome_at(wx, wz)
-	var allowed: Array = biome.allowed_decor_ids
-	return decor.decor_name in allowed
+func _is_decor_allowed_in_biome_ts(decor: DecorData, wx: float, wz: float, bm: BiomeManager) -> bool:
+	var biome: BiomeData = bm.get_biome_at(wx, wz)
+	return decor.decor_name in biome.allowed_decor_ids
 
-func can_place_decor(pos_x: float, pos_z: float, rng: RandomNumberGenerator, decor: DecorData) -> bool:
-	var center_h: float = parent.chunk_manager.sample_height(pos_x, pos_z)
-	var center_slope: float = _slope_deg_at(pos_x, pos_z)
-
-	if (decor.decor_name.is_empty() || !decor_scenes.has(decor.decor_name.to_lower()) 
-	||	center_h < decor.min_height or center_h > decor.max_height 
-	|| !is_slope_allowed(decor, pos_x, pos_z, center_slope) 
-	||	rng.randf() >= decor.spawn_chance):
+func _can_place_decor_ts(pos_x: float, pos_z: float, rng: RandomNumberGenerator, decor: DecorData, bm: BiomeManager, noise: FastNoiseLite) -> bool:
+	var center_h: float = parent.chunk_manager.sample_height_ts(pos_x, pos_z, bm, noise)
+	var center_slope: float = _slope_deg_at_ts(pos_x, pos_z, bm, noise)
+	if (decor.decor_name.is_empty() or not decor_scenes.has(decor.decor_name.to_lower())
+			or center_h < decor.min_height or center_h > decor.max_height
+			or not _is_slope_allowed_ts(decor, pos_x, pos_z, center_slope, bm, noise)
+			or rng.randf() >= decor.spawn_chance):
 		return false
 	return true
 
-## Check slope at the center and, for meshes with a footprint, at the perimeter too.
-func is_slope_allowed(decor: DecorData, cx: float, cz: float, center_slope: float) -> bool:
+func _is_slope_allowed_ts(decor: DecorData, cx: float, cz: float, center_slope: float, bm: BiomeManager, noise: FastNoiseLite) -> bool:
 	if center_slope > decor.max_slope:
 		return false
 	var ms: Vector2i = decor.mesh_size
 	if ms.x <= 0 and ms.y <= 0:
-		return true  # single-point asset, center check is enough
-	# Sample slope at footprint corners and edge midpoints.
+		return true
 	var hx: float = ms.x * 0.5
 	var hz: float = ms.y * 0.5
-	var corner_offsets: Array[Vector2] = [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz) ]
-	for off in corner_offsets:
-		var slope: float = _slope_deg_at(cx + off.x, cz + off.y)
-		if slope > decor.max_slope:
+	for off in [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]:
+		if _slope_deg_at_ts(cx + off.x, cz + off.y, bm, noise) > decor.max_slope:
 			return false
 	return true
 
-## Place the decor at the lowest available Y level
-func place_decor(decor: DecorData, transforms_by_name: Dictionary, pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, rot_y: float = 0.0) -> void:
+func _place_decor_ts(decor: DecorData, transforms_by_name: Dictionary, pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, rot_y: float, bm: BiomeManager, noise: FastNoiseLite) -> void:
 	var decor_name: String = decor.decor_name.to_lower()
-	var best_h: float = parent.chunk_manager.sample_height(pos_x, pos_z)
-
+	var best_h: float = parent.chunk_manager.sample_height_ts(pos_x, pos_z, bm, noise)
 	var ms: Vector2i = decor.mesh_size
 	if ms.x > 0 or ms.y > 0:
-		# Sample height at corners
 		var hx: float = ms.x * 0.5
 		var hz: float = ms.y * 0.5
-		var sample_offsets: Array[Vector2] = [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]
-		for off in sample_offsets:
-			var h: float = parent.chunk_manager.sample_height(pos_x + off.x, pos_z + off.y)
+		for off in [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]:
+			var h: float = parent.chunk_manager.sample_height_ts(pos_x + off.x, pos_z + off.y, bm, noise)
 			if h < best_h:
 				best_h = h
-
 	var rot_basis := Basis(Vector3.UP, rot_y)
-	var decor_transforms := Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z))
-	if !transforms_by_name.has(decor_name):
+	if not transforms_by_name.has(decor_name):
 		transforms_by_name[decor_name] = []
-	transforms_by_name[decor_name].append(decor_transforms)
-
-	# Block grid coords covered by this asset's mesh_size.
+	transforms_by_name[decor_name].append(Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z)))
 	if ms.x > 0 or ms.y > 0:
 		var rx: int = int(ceil(float(ms.x) / float(2 * step)))
 		var rz: int = int(ceil(float(ms.y) / float(2 * step)))
@@ -146,10 +130,9 @@ func place_decor(decor: DecorData, transforms_by_name: Dictionary, pos_x: float,
 			for dz in range(-rz, rz + 1):
 				blocked[Vector2i(gx + dx, gz + dz)] = true
 
-func _slope_deg_at(wx: float, wz: float) -> float:
-	var n: Vector3 = parent.chunk_manager.sample_normal(wx, wz)
+func _slope_deg_at_ts(wx: float, wz: float, bm: BiomeManager, noise: FastNoiseLite) -> float:
+	var n: Vector3 = parent.chunk_manager.sample_normal_ts(wx, wz, bm, noise)
 	var ny: float = clamp(n.dot(Vector3.UP), -1.0, 1.0)
-	# atan2(sin(theta), cos(theta)) == theta and sin(theta)=sqrt(1-ny^2)
 	return rad_to_deg(atan2(sqrt(max(0.0, 1.0 - ny * ny)), ny))
 
 func spawn_meshes(decor_name: String, transforms: Array, loc: Vector2i) -> void:
@@ -174,7 +157,7 @@ func spawn_meshes(decor_name: String, transforms: Array, loc: Vector2i) -> void:
 		_scene_nodes[slot_key] = nodes
 		return
 
-	print("[DecorManager] spawn_meshes: ", decor_name, " count=", transforms.size(), " chunk=", loc)
+#	print("[DecorManager] spawn_meshes: ", decor_name, " count=", transforms.size(), " chunk=", loc)
 	# Heuristic: attempt to batch into a MultiMeshInstance3D when the scene is simple
 	# (only a single MeshInstance3D, no collision/physics nodes and no scripts).
 	var decor_multimesh_data := get_decor_multimesh_data(scene)

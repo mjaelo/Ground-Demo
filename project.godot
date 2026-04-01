@@ -23,6 +23,10 @@ config/icon="res://icon.svg"
 
 project/assembly_name="terraintest"
 
+[navigation]
+
+3d/warnings/navmesh_edge_merge_errors=false
+
 [rendering]
 
 renderer/rendering_method="mobile"
