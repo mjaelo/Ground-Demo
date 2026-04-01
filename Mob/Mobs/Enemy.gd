@@ -3,7 +3,7 @@ class_name Enemy
 
 const RETARGET_COOLDOWN: float = 1.0
 
-@export var MOVE_SPEED: float = 50.0
+@export var MOVE_SPEED: float = 40.0
 @export var target: Node3D
 @onready var nav_agent: NavigationAgent3D = $NavigationAgent3D
 

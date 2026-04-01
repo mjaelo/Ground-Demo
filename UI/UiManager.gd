@@ -3,22 +3,28 @@ class_name UiManager
 
 var player: Player
 var visible_mode: int = 1
-@onready var label = $Label
-@onready var panel = $Label/Panel
+@onready var info_node := $Label
+@onready var loading_node := $Loading
+@onready var loading_label := $Loading/VBoxContainer/LoadingLabel
+@onready var data_label := $Loading/VBoxContainer/DataLabel
+
+var loading_ticks: int = 0
 
 func init(_player:Player) -> void:
 	player = _player
 	RenderingServer.set_debug_generate_wireframes(true)
 	NavigationServer3D.set_debug_enabled(true)
-	# TODO start loading screen
+	
+	loading_node.visible = true
+	info_node.visible = false
 
-func _process(_delta) -> void:
-	label.text = "FPS: %d\n" % Engine.get_frames_per_second()
+func loaded_tick() -> void:
+	info_node.text = "FPS: %d\n" % Engine.get_frames_per_second()
 	if(visible_mode == 1):
-		label.text += "Move Speed: %.1f\n" % player.MOVE_SPEED if player else ""
+		info_node.text += "Move Speed: %.1f\n" % player.MOVE_SPEED if player else ""
 		if player:
-			label.text += "Position: %.1v\n" % player.global_position
-		label.text += """
+			info_node.text += "Position: %.1v\n" % player.global_position
+		info_node.text += """
 			Player
 			Move: WASDEQ,Space,Mouse
 			Move speed: Wheel,+/-,Shift
@@ -34,7 +40,21 @@ func _process(_delta) -> void:
 			Mouse toggle: Escape / F12
 			"""
 
+func unloaded_tick(status:String) -> void:
+	loading_ticks += 1
+	var dots_nr := int(loading_ticks / 10.0) % 6
+	var dots := '*'
+	for nr in dots_nr:
+		dots+='*'
+	var fps_text :=  "FPS: %d\n" % Engine.get_frames_per_second()
+	loading_label.text = "Loading\n" + str(dots)
+	data_label.text = fps_text+status
 
+func activate() -> void:
+	loading_node.visible = false
+	info_node.visible = true
+
+# ── Input ────────────────────────────────────────────────────────────── TODO clean up
 func _unhandled_key_input(p_event: InputEvent) -> void:
 	if p_event is InputEventKey and p_event.pressed:
 		match p_event.keycode:
@@ -42,7 +62,7 @@ func _unhandled_key_input(p_event: InputEvent) -> void:
 				get_tree().quit()
 			KEY_F9:
 				visible_mode = (visible_mode + 1 ) % 3
-				panel.visible = (visible_mode == 1)
+				info_node.visible = (visible_mode == 1)
 				visible = visible_mode > 0
 			KEY_F10:
 				var vp = get_viewport()
@@ -57,7 +77,6 @@ func _unhandled_key_input(p_event: InputEvent) -> void:
 				else:
 					Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 				get_viewport().set_input_as_handled()
-		
 		
 func toggle_fullscreen() -> void:
 	if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN or \

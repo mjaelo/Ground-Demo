@@ -36,7 +36,6 @@ func activate_mobs() -> void:
 func _activate_enemy() -> void:
 	if is_enemy_activated:
 		return
-	is_enemy_activated = true
 	var player_pos: Vector3 = _player.global_transform.origin
 	var enemy_xz: Vector3 = player_pos + Vector3(30, 0, 30)
 	# Cast height to float to avoid Variant type inference
@@ -46,6 +45,7 @@ func _activate_enemy() -> void:
 	_enemy.set_process(true)
 	_enemy.set_physics_process(true)
 	_nav_baker._current_center = Vector3(INF, INF, INF)
+	is_enemy_activated = true
 
 func on_nav_bake_finished() -> void:
 	if is_enemy_activated and not _enemy._navigation_ready:

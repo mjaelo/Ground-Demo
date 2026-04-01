@@ -1,6 +1,5 @@
 extends Node
 class_name MobManager
-# TODO move files to Mob directory?
 @onready var nav_baker: RuntimeNavigationBaker = $NavBaker
 @onready var player: Player = $Player
 @onready var enemy: Enemy = $Enemy # TODO enemy should be spawned by the decor / chunk when it generates
@@ -17,3 +16,6 @@ func activate() -> void:
 
 func get_player_chunk_loc() -> Vector2i:
 	return GroundUtils.world_pos_to_chunk_loc(player.global_transform.origin)
+
+func get_load_status() -> String:
+	return " Player ready: %s\nEnemy ready: %s" % [mob_activation_manager.is_player_activated, mob_activation_manager.is_enemy_activated]
