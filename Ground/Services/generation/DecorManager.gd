@@ -53,6 +53,13 @@ func generate_transforms_for_decor(region_origin_m: Vector3, blocked: Dictionary
 		push_warning("No placement layers found")
 	var ignore_blocked: bool = decor_d != null and decor_d.mesh_size == Vector2i.ZERO
 
+	# Hoist invariant checks out of the hot loop.
+	if decor_d.decor_name.is_empty() or not decor_scenes.has(decor_d.decor_name.to_lower()):
+		return []
+
+	var spawn_chance: float = decor_d.spawn_chance
+	var empty_chance: float = GroundConstants.DECOR_EMPTY_CHANCE
+
 	var transforms_by_decor_name: Array[Transform3D] = []
 	for x in range(0, chunk_size, step):
 		for z in range(0, chunk_size, step):
@@ -60,12 +67,15 @@ func generate_transforms_for_decor(region_origin_m: Vector3, blocked: Dictionary
 			var gz: int = int(float(z) / float(step))
 			if !ignore_blocked and blocked.has(Vector2i(gx, gz)):
 				continue
-			if local_rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE:
+			if local_rng.randf() < empty_chance:
+				continue
+			# Check spawn_chance BEFORE any noise sampling – cheapest rejection.
+			if local_rng.randf() >= spawn_chance:
 				continue
 			var pos_x := x + origin.x
 			var pos_z := z + origin.z
 			if _is_decor_allowed_in_biome_ts(decor_d, pos_x, pos_z):
-				if _can_place_decor_ts(pos_x, pos_z, local_rng, decor_d, noise):
+				if _can_place_decor_ts(pos_x, pos_z, decor_d, noise):
 					var rot_index: int = local_rng.randi() % 4
 					var rot_y: float = rot_index * PI * 0.5
 					_place_decor_ts(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y, noise)
@@ -83,13 +93,12 @@ func _is_decor_allowed_in_biome_ts(decor: DecorData, wx: float, wz: float) -> bo
 	var biome: BiomeData = parent.biome_manager.get_biome_at(wx, wz)
 	return decor.decor_name in biome.allowed_decor_ids
 
-func _can_place_decor_ts(pos_x: float, pos_z: float, rng: RandomNumberGenerator, decor: DecorData, noise: FastNoiseLite) -> bool:
+func _can_place_decor_ts(pos_x: float, pos_z: float, decor: DecorData, noise: FastNoiseLite) -> bool:
 	var center_h: float = parent.chunk_manager.sample_height_ts(pos_x, pos_z, noise)
+	if center_h < decor.min_height or center_h > decor.max_height:
+		return false
 	var center_slope: float = _slope_deg_at_ts(pos_x, pos_z, noise)
-	if (decor.decor_name.is_empty() or not decor_scenes.has(decor.decor_name.to_lower())
-			or center_h < decor.min_height or center_h > decor.max_height
-			or not _is_slope_allowed_ts(decor, pos_x, pos_z, center_slope, noise)
-			or rng.randf() >= decor.spawn_chance):
+	if not _is_slope_allowed_ts(decor, pos_x, pos_z, center_slope, noise):
 		return false
 	return true
 

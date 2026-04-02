@@ -30,7 +30,7 @@ const far_resolution: int = 6
 const REMOVE_CHUNKS_MARGIN: int = 3
 
 const STARTUP_DECOR_THREADS: int = 16
-const STARTUP_CHUNK_THREADS: int = 12
+const STARTUP_CHUNK_THREADS: int = 4
 const STARTUP_CHUNKS_PER_FRAME: int = 16
 const STARTUP_LOD_PER_FRAME: int = 100
 

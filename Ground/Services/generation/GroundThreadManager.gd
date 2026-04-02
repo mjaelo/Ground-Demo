@@ -163,7 +163,12 @@ func _apply_decor_results() -> void:
 		# Chain the next decor for this chunk in priority order, passing blocked cells forward.
 		var idx := get_next_allowed_decor_in_chunk(result.decor_idx + 1, chunk.data)
 		if idx != -1:
-			_push_decor_request(DecorThreadRequest.new().init(loc, idx, result.blocked))
+			var req := DecorThreadRequest.new().init(loc, idx, result.blocked)
+			# Try to start immediately to avoid a full frame of latency per chain step.
+			if !decor_threads.has(loc) and decor_threads.size() < max_decor_threads:
+				_start_decor_thread(req.loc, req.decor_idx, req.blocked)
+			else:
+				_push_decor_request(req)
 		else:
 			chunk.are_decors_spawned = true
 
