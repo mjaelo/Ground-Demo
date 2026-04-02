@@ -18,12 +18,13 @@ var heightmap: Image:
 
 ## Build the chunk node hierarchy from a ChunkData.
 ## Call on the main thread after generating data on a worker.
-static func build_chunk(p_data: ChunkData, shader_material: ShaderMaterial, add_collision: bool) -> GroundChunk:
+static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial) -> GroundChunk:
+	var add_collision := chunk_d.lod_tier == GroundConstants.LOD_LEVELS.CLOSE
 	var chunk := GroundChunk.new()
-	chunk.data = p_data
+	chunk.data = chunk_d
 
-	var res: int = p_data.heightmap.get_width()
-	var mesh := _build_mesh(p_data.heightmap, res)
+	var res: int = chunk_d.heightmap.get_width()
+	var mesh := _build_mesh(chunk_d.heightmap, res)
 
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
@@ -31,11 +32,11 @@ static func build_chunk(p_data: ChunkData, shader_material: ShaderMaterial, add_
 
 	# Create per-instance material with splatmap texture
 	var mat: ShaderMaterial = shader_material.duplicate() as ShaderMaterial
-	var splat_tex := ImageTexture.create_from_image(p_data.splatmap)
+	var splat_tex := ImageTexture.create_from_image(chunk_d.splatmap)
 	mat.set_shader_parameter("splatmap", splat_tex)
 	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
 	mi.material_override = mat
-	mi.position = Vector3(p_data.loc.x * GroundConstants.CHUNK_SIZE, 0, p_data.loc.y * GroundConstants.CHUNK_SIZE)
+	mi.position = Vector3(chunk_d.loc.x * GroundConstants.CHUNK_SIZE, 0, chunk_d.loc.y * GroundConstants.CHUNK_SIZE)
 
 	chunk.mesh_instance = mi
 
@@ -44,7 +45,7 @@ static func build_chunk(p_data: ChunkData, shader_material: ShaderMaterial, add_
 		body.collision_layer = 1
 		body.collision_mask = 0
 		var col_shape := CollisionShape3D.new()
-		col_shape.shape = _build_heightmap_shape(p_data.heightmap, res)
+		col_shape.shape = _build_heightmap_shape(chunk_d.heightmap, res)
 		# HeightMapShape3D is centered at origin with 1-unit cell spacing.
 		# Scale by cell size and offset by half-chunk so it aligns with the visual mesh
 		# (which spans [0, CHUNK_SIZE] in X/Z relative to the MeshInstance3D position).

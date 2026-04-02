@@ -6,7 +6,7 @@ class_name Main
 @onready var ui: UiManager = $UI
 @onready var mob: MobManager = $Mob
 
-var is_activated: bool = false
+var is_startup_done: bool = false
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -21,7 +21,7 @@ func _process(_delta: float) -> void: # TODO can be done more rarely
 		return
 	var player_chunk_loc: Vector2i = mob.get_player_chunk_loc()
 	
-	if is_activated:
+	if is_startup_done:
 		loaded_tick(player_chunk_loc)
 	else:
 		unloaded_tick(player_chunk_loc)
@@ -37,8 +37,8 @@ func unloaded_tick(player_chunk_loc: Vector2i) -> void:
 	try_activate_modules(player_chunk_loc)
 
 func try_activate_modules(player_chunk_loc: Vector2i) -> void:
-	if ground.are_nearby_chunks_ready(player_chunk_loc):
+	if ground.is_ground_ready(player_chunk_loc):
 		ui.activate()
 		ground.activate()
 		mob.activate()
-		is_activated = true
+		is_startup_done = true

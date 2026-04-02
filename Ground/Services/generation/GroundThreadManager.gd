@@ -1,216 +1,265 @@
 extends RefCounted
 class_name GroundThreadManager
 
-var chunk_threads: Dictionary = {} # Vector2i -> Thread
-var LOD_chunk_threads: Dictionary = {} # Vector2i -> Thread
-var decor_threads: Dictionary = {} # Vector2i -> Thread
+var chunk_threads: Dictionary = {}        # Vector2i -> Thread
+var decor_threads: Dictionary = {}        # Vector2i -> Thread
 var pending_chunk_results: Array[ChunkData] = []
-var pending_LOD_chunk_results: Array[ChunkData] = []
 var pending_decor_results: Array[DecorThreadResult] = []
+var chunk_requests: Array[ChunkThreadRequest] = []
+var decor_requests: Array[DecorThreadRequest] = []
+var is_decor_request_list_dirty: bool = false
 
-var max_concurrent_threads: int = GroundConstants.STARTUP_THREADS
+var max_chunk_threads: int  = GroundConstants.STARTUP_CHUNK_THREADS
+var max_decor_threads: int  = GroundConstants.STARTUP_DECOR_THREADS
 var max_chunks_per_frame: int = GroundConstants.STARTUP_CHUNKS_PER_FRAME
-var max_far_per_frame: int = GroundConstants.STARTUP_LOD_PER_FRAME
-var max_far_threads: int = GroundConstants.STARTUP_LOD_THREADS
+var max_lod_per_frame: int  = GroundConstants.STARTUP_LOD_PER_FRAME
 
-var parent: GroundManager = null
+var parent: GroundManager
 
+# ── initiate ─────────────────────────────────────────────────────
 func initialize(_parent: GroundManager) -> void:
 	parent = _parent
 
-func set_steady_values():
-	max_chunks_per_frame = GroundConstants.STEADY_CHUNKS_PER_FRAME
-	max_concurrent_threads = GroundConstants.STEADY_THREADS
-	max_far_per_frame = GroundConstants.STEADY_LOD_PER_FRAME
-	max_far_threads = GroundConstants.STEADY_LOD_THREADS
+func handle_threads(player_loc: Vector2i) -> void:
+	# Always collect finished threads first – never skip this regardless of cap.
+	_collect_pending_thread_results(chunk_threads, pending_chunk_results)
+	_collect_pending_thread_results(decor_threads, pending_decor_results)
 
-func handle_thread_results(player_loc: Vector2i):
-	_collect_thread_results(chunk_threads, pending_chunk_results)
-	_collect_thread_results(LOD_chunk_threads, pending_LOD_chunk_results)
-	_collect_thread_results(decor_threads, pending_decor_results)
-	_apply_LOD_chunk_results(player_loc)
-	_apply_chunk_results(player_loc)
-	_apply_decor_results(player_loc)
+	var frustum := _get_frustum_planes()
 
-func _collect_thread_results(dict: Dictionary, results: Array) -> void:
-	var done: Array[Vector2i] = []
-	for loc in dict.keys():
-		if not dict[loc].is_alive():
-			done.push_back(loc)
-	for loc in done:
-		var result = dict[loc].wait_to_finish()
-		dict.erase(loc)
-		results.push_back(result)
+	if pending_chunk_results.size() > 0:
+		sort_pending_chunk_results(player_loc, frustum)
+		_apply_chunk_results()
 
-# ── Thread helpers ────────────────────────────────────────────────────
-func _start_chunk_generation_thread(is_far: bool, loc: Vector2i, lod_tier: int) -> void:
-	var thread_dict := LOD_chunk_threads if is_far else chunk_threads
-	var thread := Thread.new()
-	thread_dict[loc] = thread
-	if thread.start(parent.chunk_manager.generate_chunk_data.bind(loc, lod_tier)) != OK:
-		thread_dict.erase(loc)
+	if pending_decor_results.size() > 0:
+		sort_pending_decor_thread_results(player_loc, frustum)
+		_apply_decor_results()
 
-# ── Apply results ─────────────────────────────────────────────────────
-func _apply_LOD_chunk_results(player_loc: Vector2i) -> void:
-	if pending_LOD_chunk_results.size() > 1:
-		pending_LOD_chunk_results.sort_custom(func(a: ChunkData, b: ChunkData):
-			return a.loc.distance_to(player_loc) < b.loc.distance_to(player_loc))
-	var applied := 0
-	while pending_LOD_chunk_results.size() > 0 and applied < max_far_per_frame:
-		var cd: ChunkData = pending_LOD_chunk_results.pop_front()
-		var existing: GroundChunk = parent.chunk_manager.chunks.get(cd.loc, null)
-		if existing != null and existing.lod_tier <= cd.lod_tier:
-			applied += 1
+	# Chunk and decor threads are budgeted independently – neither starves the other.
+	if chunk_threads.size() < max_chunk_threads:
+		update_chunk_requests(player_loc, frustum)
+		start_chunk_threads()
+
+	if is_decor_request_list_dirty:
+		sort_decor_requests(player_loc, frustum)
+		is_decor_request_list_dirty = false
+
+	start_decor_threads()
+
+# ── Chunks ─────────────────────────────────────────────────────
+func update_chunk_requests(player_loc: Vector2i, frustum: Array[Plane]) -> void:
+	var far_r   := GroundConstants.far_radius
+	var close_r := GroundConstants.close_radius
+	# Build a Set of locs that already have a pending request or a running thread.
+	var existing_req: Dictionary = {}
+	for r: ChunkThreadRequest in chunk_requests:
+		existing_req[r.loc] = true
+	for loc in chunk_threads:
+		existing_req[loc] = true
+	# Scan the grid for new work.
+	for x in range(player_loc.x - far_r, player_loc.x + far_r + 1):
+		for y in range(player_loc.y - far_r, player_loc.y + far_r + 1):
+			var loc := Vector2i(x, y)
+			var dist: float = loc.distance_to(player_loc)
+			if dist > far_r:
+				continue
+			if existing_req.has(loc):
+				continue
+			var chunk: GroundChunk = parent.chunk_manager.chunks.get(loc, null)
+			var desired_res: int = GroundConstants.LOD_LEVELS.CLOSE if dist <= close_r else GroundConstants.LOD_LEVELS.FAR
+			var is_visible: bool = is_chunk_visible(loc, frustum)
+			if (chunk != null && chunk.lod_tier <= desired_res) || (desired_res == GroundConstants.LOD_LEVELS.FAR && !is_visible):
+				continue
+			chunk_requests.push_back(ChunkThreadRequest.new().init(loc, desired_res, dist, is_visible))
+	sort_chunk_requests()
+
+func start_chunk_threads() -> void:
+	var i := 0
+	while i < chunk_requests.size():
+		if chunk_threads.size() >= max_chunk_threads:
+			break
+		var req: ChunkThreadRequest = chunk_requests[i]
+		if chunk_threads.has(req.loc):
+			# Already has a running thread – skip, keep in list so it isn't re-requested.
+			i += 1
 			continue
-		_apply_chunk_result(cd, player_loc)
-		applied += 1
+		chunk_requests.remove_at(i)
+		var thread := Thread.new()
+		chunk_threads[req.loc] = thread
+		if thread.start(parent.chunk_manager.generate_chunk_data.bind(req.loc, req.lod_tier)) != OK:
+			chunk_threads.erase(req.loc)
 
-func _apply_chunk_results(player_loc: Vector2i) -> void:
-	if pending_chunk_results.size() > 1:
-		pending_chunk_results.sort_custom(func(a: ChunkData, b: ChunkData):
-			return a.loc.distance_to(player_loc) < b.loc.distance_to(player_loc))
-	var applied := 0
-	while pending_chunk_results.size() > 0 and applied < max_chunks_per_frame:
-		var cd: ChunkData = pending_chunk_results.pop_front()
-		var existing: GroundChunk = parent.chunk_manager.chunks.get(cd.loc, null)
-		if existing != null and existing.lod_tier <= cd.lod_tier:
-			applied += 1
+func _apply_chunk_results() -> void:
+	var close_applied := 0
+	var lod_applied   := 0
+	var i := 0
+	while i < pending_chunk_results.size():
+		var chunk_d: ChunkData = pending_chunk_results[i]
+		var is_close := chunk_d.lod_tier == GroundConstants.LOD_LEVELS.CLOSE
+		if (is_close and close_applied >= max_chunks_per_frame) || (!is_close and lod_applied >= max_lod_per_frame):
+			i += 1
 			continue
-		_apply_chunk_result(cd, player_loc)
-		applied += 1
-
-func _apply_chunk_result(chunk_d: ChunkData, player_loc: Vector2i) -> void:
-	parent.chunk_manager._remove_chunk(chunk_d.loc)
-	var add_collision: bool = chunk_d.lod_tier == GroundConstants.LOD_LEVELS.CLOSE
-	var chunk := GroundChunk.build_chunk(chunk_d, parent.texture_manager.shader_material, add_collision)
-	chunk.lod_tier = chunk_d.lod_tier
-	chunk.are_decors_spawned = false
-	parent.add_child(chunk.mesh_instance)
-	parent.chunk_manager.chunks[chunk_d.loc] = chunk
-
-	if chunk_d.lod_tier == GroundConstants.LOD_LEVELS.CLOSE:
-		var dist: float = chunk_d.loc.distance_to(player_loc)
-		if dist <= GroundConstants.close_radius + 1:
-			if not decor_threads.has(chunk_d.loc) and decor_threads.size() < GroundConstants.MAX_DECOR_THREADS:
-				_start_decor_thread_for_decor_id(chunk_d.loc, 0, {})
-
-func _apply_decor_results(player_loc: Vector2i) -> void:
-	if pending_decor_results.size() > 1:
-		pending_decor_results.sort_custom(func(a, b):
-			return (a as DecorThreadResult).loc.distance_to(player_loc) < (b as DecorThreadResult).loc.distance_to(player_loc))
-	var applied := 0
-	while pending_decor_results.size() > 0 and applied < GroundConstants.MAX_DECOR_CHUNKS_PER_FRAME:
-		var result: DecorThreadResult = pending_decor_results.pop_front()
-		var loc: Vector2i = result.loc
-		var chunk: GroundChunk = parent.chunk_manager.chunks.get(loc, null)
-		if not chunk or chunk.lod_tier != GroundConstants.LOD_LEVELS.CLOSE or chunk.are_decors_spawned:
+		pending_chunk_results.remove_at(i)
+		var existing: GroundChunk = parent.chunk_manager.chunks.get(chunk_d.loc, null)
+		if existing != null and existing.lod_tier <= chunk_d.lod_tier:
 			continue
-		# Spawn meshes produced by this decor thread.
-		var tmap: Dictionary = result.transforms_by_mesh
-		for mesh_name in tmap.keys():
-			if tmap[mesh_name].size() > 0:
-				parent.decor_manager.spawn_meshes(mesh_name.to_lower(), tmap[mesh_name], loc)
-		# Chain the next decor priority, or mark the chunk as done.
-		var all_decors: Array[DecorData] = parent.decor_manager.decor_datas_sorted
-		var next_idx: int = result.decor_idx + 1
-		if next_idx >= all_decors.size():
-			#var biome_names := chunk.data.prominent_biomes.map(func(b: BiomeData): return b.biome_name)
-			#print("[GroundThreadManager] Chunk ", loc, " decors done for biomes ", biome_names)
-			chunk.are_decors_spawned = true
-		else:
-			var allow_chain: bool = not parent.is_activated or loc.distance_to(player_loc) <= GroundConstants.close_radius + 1
-			if allow_chain and decor_threads.size() < GroundConstants.MAX_DECOR_THREADS:
-				_start_decor_thread_for_decor_id(loc, next_idx, result.blocked)
-			elif not allow_chain:
-				# Chunk moved out of range mid-pipeline, mark as done to unblock initial load check.
+
+		var chunk: GroundChunk = parent.chunk_manager.create_chunk(chunk_d)
+		chunk.lod_tier = chunk_d.lod_tier
+		chunk.are_decors_spawned = false
+		parent.get_node("Chunks").add_child(chunk.mesh_instance)
+		parent.chunk_manager.chunks[chunk_d.loc] = chunk
+
+		if is_close:
+			close_applied += 1
+			var idx := get_next_allowed_decor_in_chunk(0, chunk_d)
+			if idx >= 0:
+				_push_decor_request(DecorThreadRequest.new().init(chunk_d.loc, idx, {}))
+			else:
 				chunk.are_decors_spawned = true
-		applied += 1
-	# After applying results, fill any free decor-thread slots with chunks that haven't started yet.
-	_try_start_pending_decors(player_loc)
+		else:
+			lod_applied += 1
 
-# ── Public entry points called by ChunkManager ────────────────────────
-func start_far_chunk_generation(far_needed: Array[FarChunkRequest]) -> void:
-	var far_slots: int = max_far_threads - LOD_chunk_threads.size()
-	var far_started := 0
-	for item: FarChunkRequest in far_needed:
-		if far_started >= max_far_per_frame or far_slots <= 0:
+# ── Decors ─────────────────────────────────────────────────────
+func start_decor_threads() -> void:
+	var i := 0
+	while i < decor_requests.size():
+		if decor_threads.size() >= max_decor_threads:
 			break
-		_start_chunk_generation_thread(true, item.loc, GroundConstants.LOD_LEVELS.FAR)
-		far_started += 1
-		far_slots -= 1
+		var req: DecorThreadRequest = decor_requests[i]
+		if decor_threads.has(req.loc):
+			i += 1
+			continue
+		decor_requests.remove_at(i)
+		_start_decor_thread(req.loc, req.decor_idx, req.blocked)
 
-func start_close_chunk_generation(upgrades: Array[ChunkUpgradeRequest]) -> void:
-	var slots: int = max_concurrent_threads - chunk_threads.size()
-	for item: ChunkUpgradeRequest in upgrades:
-		if slots <= 0:
-			break
-		_start_chunk_generation_thread(false, item.loc, item.lod_tier)
-		slots -= 1
-
-func _try_start_pending_decors(player_loc: Vector2i) -> void:
-	if decor_threads.size() >= GroundConstants.MAX_DECOR_THREADS:
-		return
-	# Build a set of locs that already have a pending result so we don't start a duplicate thread.
-	var locs_with_pending: Dictionary = {}
-	for r in pending_decor_results:
-		locs_with_pending[(r as DecorThreadResult).loc] = true
-	var candidates: Array = []
-	for loc in parent.chunk_manager.chunks.keys():
-		var chunk: GroundChunk = parent.chunk_manager.chunks[loc]
-		if chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
-				and not chunk.are_decors_spawned \
-				and not decor_threads.has(loc) \
-				and not locs_with_pending.has(loc):
-			candidates.append(loc)
-	candidates.sort_custom(func(a, b): return a.distance_to(player_loc) < b.distance_to(player_loc))
-	for loc in candidates:
-		if decor_threads.size() >= GroundConstants.MAX_DECOR_THREADS:
-			break
-		_start_decor_thread_for_decor_id(loc, 0, {})
-
-func _start_decor_thread_for_decor_id(loc: Vector2i, decor_idx: int, blocked_in: Dictionary) -> void:
+func _start_decor_thread(loc: Vector2i, decor_idx: int, blocked_in: Dictionary) -> void:
 	if decor_threads.has(loc):
 		return
-	var chunk: GroundChunk = parent.chunk_manager.chunks.get(loc, null)
-	if not chunk:
-		return
-	var all_decors: Array[DecorData] = parent.decor_manager.decor_datas_sorted
-	if all_decors.is_empty():
-		chunk.are_decors_spawned = true
-		return
-	# Advance past any decors not allowed by the chunk's prominent biomes.
-	var prominent_biomes: Array = chunk.data.prominent_biomes if chunk.data else []
-	while decor_idx < all_decors.size():
-		var candidate: DecorData = all_decors[decor_idx]
-		var allowed: bool = false
-		for biome: BiomeData in prominent_biomes:
-			if candidate.decor_name in biome.allowed_decor_ids:
-				allowed = true
-				break
-		if allowed:
-			break
-		decor_idx += 1
-	if decor_idx >= all_decors.size():
-		# All decors exhausted for this chunk's biomes.
-		#var biome_names := prominent_biomes.map(func(b: BiomeData): return b.biome_name)
-		#print("[GroundThreadManager] Chunk ", loc, " decors done for biomes ", biome_names)
-		chunk.are_decors_spawned = true
-		return
-
-	var decor: DecorData = all_decors[decor_idx]
+	var decor := parent.decor_manager.decor_datas[decor_idx]
 	var chunk_size := GroundConstants.CHUNK_SIZE
 	var chunk_center := Vector3(loc.x * chunk_size + chunk_size * 0.5, 0, loc.y * chunk_size + chunk_size * 0.5)
-	var blocked_copy: Dictionary = blocked_in.duplicate(true)
-	# Create thread-local noise snapshots BEFORE entering the thread.
-	# FastNoiseLite is not thread-safe; each thread needs its own copy.
-	var thread_bm: BiomeManager = parent.biome_manager.make_thread_local()
 	var thread_noise: FastNoiseLite = parent.noise.duplicate() as FastNoiseLite
 	var thread := Thread.new()
 	decor_threads[loc] = thread
 	var callable := func() -> DecorThreadResult:
-		var tmap: Dictionary = parent.decor_manager.generate_transforms_for_decor(chunk_center, chunk_size, blocked_copy, decor, thread_bm, thread_noise)
-		return DecorThreadResult.new().init(loc, tmap, decor, blocked_copy, decor_idx)
-	#print("[GroundThreadManager] Starting decor thread for decor ", decor.decor_name, " at ", loc)
+		var tmap: Array[Transform3D] = parent.decor_manager.generate_transforms_for_decor(chunk_center, blocked_in, decor, thread_noise)
+		return DecorThreadResult.new().init(loc, tmap, blocked_in, decor_idx)
 	if thread.start(callable) != OK:
 		push_error("[GroundThreadManager] Failed to start decor thread for %s" % str(loc))
 		decor_threads.erase(loc)
+
+func _apply_decor_results() -> void:
+	while pending_decor_results.size() > 0:
+		var result: DecorThreadResult = pending_decor_results.pop_front()
+		var loc: Vector2i = result.loc
+		var chunk: GroundChunk = parent.chunk_manager.chunks.get(loc, null)
+		if !chunk || chunk.lod_tier != GroundConstants.LOD_LEVELS.CLOSE || chunk.are_decors_spawned:
+			continue
+
+		var decor_d: DecorData = parent.decor_manager.decor_datas[result.decor_idx]
+		parent.decor_manager.spawn_meshes(decor_d, result.transforms_by_mesh, loc)
+
+		# Chain the next decor for this chunk in priority order, passing blocked cells forward.
+		var idx := get_next_allowed_decor_in_chunk(result.decor_idx + 1, chunk.data)
+		if idx != -1:
+			_push_decor_request(DecorThreadRequest.new().init(loc, idx, result.blocked))
+		else:
+			chunk.are_decors_spawned = true
+
+# ── Helpers ─────────────────────────────────────────────────────
+func _push_decor_request(req: DecorThreadRequest) -> void:
+	decor_requests.append(req)
+	is_decor_request_list_dirty = true
+
+func get_next_allowed_decor_in_chunk(decor_idx: int, chunk_data: ChunkData) -> int:
+	while decor_idx < parent.decor_manager.decor_datas.size():
+		var decor: DecorData = parent.decor_manager.decor_datas[decor_idx]
+		if is_decor_allowed_in_chunk(decor, chunk_data):
+			return decor_idx
+		decor_idx += 1
+	return -1
+
+func is_decor_allowed_in_chunk(decor: DecorData, chunk_d: ChunkData) -> bool:
+	return chunk_d.prominent_biomes.any(func(b: BiomeData) -> bool: return decor.decor_name in b.allowed_decor_ids)
+
+func _collect_pending_thread_results(dict: Dictionary, results: Array) -> void:
+	var done: Array = []
+	for key in dict.keys():
+		if !dict[key].is_alive():
+			done.push_back(key)
+	for key in done:
+		var result = dict[key].wait_to_finish()
+		dict.erase(key)
+		results.push_back(result)
+
+func set_steady_values() -> void:
+	max_chunk_threads    = GroundConstants.STEADY_CHUNK_THREADS
+	max_decor_threads    = GroundConstants.STEADY_DECOR_THREADS
+	max_chunks_per_frame = GroundConstants.STEADY_CHUNKS_PER_FRAME
+	max_lod_per_frame    = GroundConstants.STEADY_LOD_PER_FRAME
+
+# ── Frustum helpers ───────────────────────────────────────────────────
+func _get_frustum_planes() -> Array[Plane]:
+	var cam: Camera3D = parent.camera
+	if not is_instance_valid(cam):
+		return []
+	return cam.get_frustum()
+
+func is_chunk_visible(loc: Vector2i, frustum: Array[Plane]) -> bool:
+	if frustum.is_empty():
+		return true
+	var cs: float = GroundConstants.CHUNK_SIZE
+	var wx: float = loc.x * cs
+	var wz: float = loc.y * cs
+	var aabb := AABB(
+		Vector3(wx, GroundConstants.HEIGHT_MIN, wz),
+		Vector3(cs, GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN, cs)
+	)
+	for plane: Plane in frustum:
+		if plane.is_point_over(aabb.get_support(-plane.normal)):
+			return false
+	return true
+
+# ── Sorters ─────────────────────────────────────────────────────
+func sort_by_loc(a: Vector2i, b: Vector2i, player_loc: Vector2i, frustum: Array[Plane]) -> bool:
+	var a_vis := is_chunk_visible(a, frustum)
+	var b_vis := is_chunk_visible(b, frustum)
+	if a_vis != b_vis:
+		return a_vis
+	return a.distance_to(player_loc) < b.distance_to(player_loc)
+
+func sort_pending_chunk_results(player_loc: Vector2i, frustum: Array[Plane]) -> void:
+	if pending_chunk_results.size() > 1:
+		pending_chunk_results.sort_custom(func(a: ChunkData, b: ChunkData) -> bool:
+			if a.lod_tier != b.lod_tier:
+				return a.lod_tier < b.lod_tier
+			return sort_by_loc(a.loc, b.loc, player_loc, frustum))
+
+func sort_pending_decor_thread_results(player_loc: Vector2i, frustum: Array[Plane]) -> void:
+	if pending_decor_results.size() > 1:
+		pending_decor_results.sort_custom(func(a: DecorThreadResult, b: DecorThreadResult) -> bool:
+			return sort_by_loc(a.loc, b.loc, player_loc, frustum))
+
+func sort_decor_requests(player_loc: Vector2i, frustum: Array[Plane]) -> void:
+	if decor_requests.size() > 1:
+		decor_requests.sort_custom(func(a: DecorThreadRequest, b: DecorThreadRequest) -> bool:
+			var a_dist := a.loc.distance_to(player_loc)
+			var b_dist := b.loc.distance_to(player_loc)
+			if a_dist != b_dist:
+				return a_dist < b_dist
+			var a_vis := is_chunk_visible(a.loc, frustum)
+			var b_vis := is_chunk_visible(b.loc, frustum)
+			if a_vis != b_vis:
+				return a_vis
+			if a.loc.x != b.loc.x:
+				return a.loc.x < b.loc.x
+			return a.loc.y < b.loc.y)
+
+func sort_chunk_requests() -> void: # TODO use frustum instead of setting visible
+	chunk_requests.sort_custom(func(a: ChunkThreadRequest, b: ChunkThreadRequest) -> bool:
+		if a.lod_tier != b.lod_tier:
+			return a.lod_tier < b.lod_tier
+		if a.visible != b.visible:
+			return a.visible
+		return a.dist < b.dist)

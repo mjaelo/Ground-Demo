@@ -13,13 +13,12 @@ func initialize( _parent: GroundManager) -> void:
 	parent = _parent
 
 # ── Chunk generation ───────────────────────────────────────────────────
-## Returns a ChunkData populated with heightmap, splatmap, and dominant biome.
-## Safe to call from a worker thread.
+## Returns a ChunkData populated with heightmap, splatmap, and dominant biomes.
 func generate_chunk_data(loc: Vector2i, lod_tier: int) -> ChunkData:
 	var data := ChunkData.new()
 	data.loc = loc
 	data.lod_tier = lod_tier
-	var resolution :int = (GroundConstants.close_resolution if lod_tier == GroundConstants.LOD_LEVELS.CLOSE else (GroundConstants.medium_resolution if lod_tier == GroundConstants.LOD_LEVELS.MEDIUM else GroundConstants.far_resolution))
+	var resolution: int = GroundConstants.close_resolution if lod_tier == GroundConstants.LOD_LEVELS.CLOSE else GroundConstants.far_resolution
 	var chunk_size: int = GroundConstants.CHUNK_SIZE
 	var base_x: float = data.loc.x * chunk_size
 	var base_z: float = data.loc.y * chunk_size
@@ -52,6 +51,11 @@ func generate_chunk_data(loc: Vector2i, lod_tier: int) -> ChunkData:
 	data.splatmap = splatmap
 	return data
 
+func create_chunk(chunk_data: ChunkData) -> GroundChunk:
+	if chunks.has(chunk_data.loc):
+		_remove_chunk(chunk_data.loc)
+	return GroundChunk.build_chunk(chunk_data, parent.texture_manager.shader_material) # TODO move from GroundChunk
+
 func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,biome_weight_totals) ->Image:
 	for x in range(resolution):
 		var world_x: float = float(x) * inv_res * chunk_size + base_x
@@ -69,7 +73,6 @@ func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv
 			
 func get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,lod_tier) ->Image:
 	if lod_tier == GroundConstants.LOD_LEVELS.FAR:
-		# For far LOD, use LOD texture IDs for splatmap coloring
 		for x in range(resolution):
 			for y in range(resolution):
 				var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
@@ -126,9 +129,6 @@ func get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolu
 				splatmap.set_pixel(x, y, _encode_weight_pixel(tex_weights))
 	return splatmap
 
-## Encode per-texture weights into an RGBA Color.
-## tex_weights[0] → R, tex_weights[1] → G, tex_weights[2] → B, tex_weights[3] → A.
-## Weights are normalised so they sum to 1.0.
 func _encode_weight_pixel(tex_weights: Array[float]) -> Color:
 	var total: float = tex_weights[0] + tex_weights[1] + tex_weights[2] + tex_weights[3]
 	if total <= 0.0:
@@ -143,54 +143,19 @@ func _encode_weight_pixel(tex_weights: Array[float]) -> Color:
 	)
 
 # ── Chunk management ───────────────────────────────────────────────────
-func update_visible_chunks(player_loc: Vector2i) -> void:
-	update_far_chunks(player_loc)
-	update_close_chunks(player_loc)
-
-	# Unload distant chunks
-	for loc in chunks.keys():
-		if loc.distance_to(player_loc) > GroundConstants.far_radius + GroundConstants.REMOVE_CHUNKS_MARGIN:
+func update_distant_chunks(player_loc: Vector2i) -> void:
+	# Remove chunks beyond far_radius that are also out of the frustum.
+	var remove_r: float = GroundConstants.far_radius + GroundConstants.REMOVE_CHUNKS_MARGIN
+	for chunk: GroundChunk in chunks.values():
+		var loc := chunk.loc
+		var dist: float = loc.distance_to(player_loc)
+		if dist > remove_r:
 			_remove_chunk(loc)
-
-	# Clean decor from chunks that moved beyond close radius
-	for loc in chunks.keys():
-		var chunk: GroundChunk = chunks[loc]
-		if chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE && loc.distance_to(player_loc) > GroundConstants.close_radius + 1 && chunk.are_decors_spawned && parent.decor_manager:
+		if chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
+				and loc.distance_to(player_loc) > GroundConstants.close_radius + 1 \
+				and chunk.are_decors_spawned and parent.decor_manager:
 			parent.decor_manager.clear_decors(loc)
 			chunk.are_decors_spawned = false
-
-func update_far_chunks(player_loc: Vector2i) -> void:
-	var far_r := GroundConstants.far_radius
-	var far_needed: Array[FarChunkRequest]
-	for x in range(player_loc.x - far_r, player_loc.x + far_r + 1):
-		for y in range(player_loc.y - far_r, player_loc.y + far_r + 1):
-			var loc := Vector2i(x, y)
-			var dist: float = loc.distance_to(player_loc)
-			if dist > far_r: continue
-			if chunks.has(loc): continue
-			if parent.ground_thread_manager.LOD_chunk_threads.has(loc) || parent.ground_thread_manager.chunk_threads.has(loc): continue
-			far_needed.push_back(FarChunkRequest.new().init(loc, dist))
-	far_needed.sort_custom(func(a, b): return a.dist < b.dist)
-	parent.ground_thread_manager.start_far_chunk_generation(far_needed)
-		
-func update_close_chunks(player_loc: Vector2i):
-	var med_r := GroundConstants.medium_radius # TODO whats the point of medium?
-	var cls_r := GroundConstants.close_radius
-	var upgrades: Array[ChunkUpgradeRequest]
-	for x in range(player_loc.x - med_r, player_loc.x + med_r + 1):
-		for y in range(player_loc.y - med_r, player_loc.y + med_r + 1):
-			var loc := Vector2i(x, y)
-			var dist: float = loc.distance_to(player_loc)
-			if dist > med_r: continue
-			var desired: GroundConstants.LOD_LEVELS = GroundConstants.LOD_LEVELS.CLOSE if dist <= cls_r else GroundConstants.LOD_LEVELS.MEDIUM
-			var chunk: GroundChunk = chunks.get(loc, null)
-			if chunk && chunk.lod_tier <= desired: continue
-			if parent.ground_thread_manager.chunk_threads.has(loc) or parent.ground_thread_manager.LOD_chunk_threads.has(loc): continue
-			upgrades.push_back(ChunkUpgradeRequest.new().init(loc, desired, dist))
-	upgrades.sort_custom(func(a, b):
-		if a.lod_tier != b.lod_tier: return a.lod_tier < b.lod_tier
-		return a.dist < b.dist)
-	parent.ground_thread_manager.start_close_chunk_generation(upgrades)
 
 func _remove_chunk(loc: Vector2i) -> void:
 	if !chunks.has(loc):
@@ -206,8 +171,8 @@ func sample_height(world_x: float, world_z: float) -> float:
 	return GroundConstants.HEIGHT_MIN + h * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
 
 ## Thread-safe variant: uses a caller-owned BiomeManager/noise snapshot.
-func sample_height_ts(world_x: float, world_z: float, bm: BiomeManager, noise: FastNoiseLite) -> float:
-	var h: float = bm.sample_height(noise, world_x, world_z)
+func sample_height_ts(world_x: float, world_z: float, noise: FastNoiseLite) -> float:
+	var h: float = parent.biome_manager.sample_height(noise, world_x, world_z)
 	return GroundConstants.HEIGHT_MIN + h * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
 
 func sample_normal(world_x: float, world_z: float) -> Vector3:
@@ -217,10 +182,10 @@ func sample_normal(world_x: float, world_z: float) -> Vector3:
 	return Vector3(-dx, 1.0, -dz).normalized()
 
 ## Thread-safe variant.
-func sample_normal_ts(world_x: float, world_z: float, bm: BiomeManager, noise: FastNoiseLite) -> Vector3:
-	var bh := sample_height_ts(world_x, world_z, bm, noise)
-	var dx := sample_height_ts(world_x + 1.0, world_z, bm, noise) - bh
-	var dz := sample_height_ts(world_x, world_z + 1.0, bm, noise) - bh
+func sample_normal_ts(world_x: float, world_z: float, noise: FastNoiseLite) -> Vector3:
+	var bh := sample_height_ts(world_x, world_z, noise)
+	var dx := sample_height_ts(world_x + 1.0, world_z, noise) - bh
+	var dz := sample_height_ts(world_x, world_z + 1.0, noise) - bh
 	return Vector3(-dx, 1.0, -dz).normalized()
 	
 func get_height_at(world_pos: Vector3) -> float:

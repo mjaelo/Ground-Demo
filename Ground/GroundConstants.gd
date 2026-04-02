@@ -1,7 +1,7 @@
 extends Resource
 class_name GroundConstants
 
-enum LOD_LEVELS {CLOSE, MEDIUM, FAR}
+enum LOD_LEVELS {CLOSE, FAR}
 
 # ── GENERAL GROUND ────────────────────────────────────────────────────
 const HEIGHT_MIN: float = 0.0
@@ -21,26 +21,23 @@ const DECOR_STEP: int = 2 # Distance between placed mesh instances; lower = dens
 const DECOR_EMPTY_CHANCE: float = 0.3
 
 # ── CHUNKS ─────────────────────────────────────────
+
 const initial_chunk_radius: int = 1
-const close_radius: int = 4
-const medium_radius: int = 10 # TODO whats the point of medium?
+const close_radius: int = 2
 const far_radius: int = 22
 const close_resolution: int = 48
-const medium_resolution: int = 16
 const far_resolution: int = 6
 const REMOVE_CHUNKS_MARGIN: int = 3
-const MAX_DECOR_THREADS: int = 4
-const MAX_DECOR_CHUNKS_PER_FRAME: int = 12
 
+const STARTUP_DECOR_THREADS: int = 16
+const STARTUP_CHUNK_THREADS: int = 12
 const STARTUP_CHUNKS_PER_FRAME: int = 16
-const STARTUP_THREADS: int = 16
-const STARTUP_LOD_PER_FRAME: int = 200
-const STARTUP_LOD_THREADS: int = 12
+const STARTUP_LOD_PER_FRAME: int = 100
 
+const STEADY_CHUNK_THREADS: int = 4
+const STEADY_DECOR_THREADS: int = 4
 const STEADY_CHUNKS_PER_FRAME: int = 4
-const STEADY_THREADS: int = 6
 const STEADY_LOD_PER_FRAME: int = 30
-const STEADY_LOD_THREADS: int = 4
 
 # ── TERRAIN SHADER ────────────────────────────────────────────────────
 const TERRAIN_SHADER_PATH := "res://assets/terrain_blend.gdshader"

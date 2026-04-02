@@ -4,9 +4,9 @@ class_name DecorManager
 
 # asset_name (lowercase) -> PackedScene
 var decor_scenes: Dictionary = {}
-var decor_datas: Array[DecorData] = [] # TODO i dont need 2 variables, just sort it straight away
-var decor_datas_sorted: Array[DecorData] = []
+var decor_datas: Array[DecorData] = []
 var _scene_nodes: Dictionary = {} # TODO refactor. idk what that is
+var _multimesh_cache: Dictionary = {}  # decor_name (lowercase) -> {can_multimesh, mesh_res, mesh_local_transform}
 var parent: GroundManager
 
 func initialize(_parent: GroundManager) -> void:
@@ -35,24 +35,27 @@ func _init() -> void:
 		var key: String = decor.decor_name.to_lower()
 		if not decor_scenes.has(key):
 			push_warning("placement_rules: no loaded scene matches name '%s', layer will be skipped" % decor.decor_name)
-	decor_datas_sorted = decor_datas.duplicate(false)
-	decor_datas_sorted.sort_custom(func(a: DecorData, b: DecorData) -> bool:
+	decor_datas.sort_custom(func(a: DecorData, b: DecorData) -> bool:
 		if a.priority == b.priority:
 			return a.decor_name.to_lower() < b.decor_name.to_lower()
 		return a.priority > b.priority
 	)
+	# Pre-compute multimesh eligibility for every loaded scene once at startup.
+	for scene_name in decor_scenes:
+		_multimesh_cache[scene_name] = get_decor_multimesh_data(decor_scenes[scene_name])
 
-func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, blocked: Dictionary, decor_d: DecorData, bm: BiomeManager, noise: FastNoiseLite) -> Dictionary:
+func generate_transforms_for_decor(region_origin_m: Vector3, blocked: Dictionary, decor_d: DecorData, noise: FastNoiseLite) -> Array[Transform3D]:
+	var chunk_size := GroundConstants.CHUNK_SIZE
 	var step: int = max(1, GroundConstants.DECOR_STEP)
-	var origin: Vector3 = region_origin_m + Vector3(-region_size * 0.5, 0, -region_size * 0.5)
+	var origin: Vector3 = region_origin_m + Vector3(-chunk_size * 0.5, 0, -chunk_size * 0.5)
 	var local_rng := RandomNumberGenerator.new()
 	if decor_datas.is_empty():
 		push_warning("No placement layers found")
 	var ignore_blocked: bool = decor_d != null and decor_d.mesh_size == Vector2i.ZERO
 
-	var transforms_by_decor_name: Dictionary = {}
-	for x in range(0, region_size, step):
-		for z in range(0, region_size, step):
+	var transforms_by_decor_name: Array[Transform3D] = []
+	for x in range(0, chunk_size, step):
+		for z in range(0, chunk_size, step):
 			var gx: int = int(float(x) / float(step))
 			var gz: int = int(float(z) / float(step))
 			if !ignore_blocked and blocked.has(Vector2i(gx, gz)):
@@ -61,41 +64,36 @@ func generate_transforms_for_decor(region_origin_m: Vector3, region_size: int, b
 				continue
 			var pos_x := x + origin.x
 			var pos_z := z + origin.z
-			if _is_decor_allowed_in_biome_ts(decor_d, pos_x, pos_z, bm):
-				if _can_place_decor_ts(pos_x, pos_z, local_rng, decor_d, bm, noise):
+			if _is_decor_allowed_in_biome_ts(decor_d, pos_x, pos_z):
+				if _can_place_decor_ts(pos_x, pos_z, local_rng, decor_d, noise):
 					var rot_index: int = local_rng.randi() % 4
 					var rot_y: float = rot_index * PI * 0.5
-					_place_decor_ts(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y, bm, noise)
+					_place_decor_ts(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y, noise)
 	return transforms_by_decor_name
 
 ## Return a list of DecorData that are allowed in the biome covering the supplied chunk origin.
 func get_allowed_decors_for_biome(biome: BiomeData) -> Array[DecorData]:
 	var found: Array[DecorData] = []
-	for d in decor_datas:
+	for d:DecorData in decor_datas:
 		if d.decor_name in biome.allowed_decor_ids:
 			found.append(d)
-	found.sort_custom(func(a: DecorData, b: DecorData) -> bool:
-		if a.priority == b.priority:
-			return a.decor_name.to_lower() < b.decor_name.to_lower()
-		return a.priority > b.priority
-	)
 	return found
 
-func _is_decor_allowed_in_biome_ts(decor: DecorData, wx: float, wz: float, bm: BiomeManager) -> bool:
-	var biome: BiomeData = bm.get_biome_at(wx, wz)
+func _is_decor_allowed_in_biome_ts(decor: DecorData, wx: float, wz: float) -> bool:
+	var biome: BiomeData = parent.biome_manager.get_biome_at(wx, wz)
 	return decor.decor_name in biome.allowed_decor_ids
 
-func _can_place_decor_ts(pos_x: float, pos_z: float, rng: RandomNumberGenerator, decor: DecorData, bm: BiomeManager, noise: FastNoiseLite) -> bool:
-	var center_h: float = parent.chunk_manager.sample_height_ts(pos_x, pos_z, bm, noise)
-	var center_slope: float = _slope_deg_at_ts(pos_x, pos_z, bm, noise)
+func _can_place_decor_ts(pos_x: float, pos_z: float, rng: RandomNumberGenerator, decor: DecorData, noise: FastNoiseLite) -> bool:
+	var center_h: float = parent.chunk_manager.sample_height_ts(pos_x, pos_z, noise)
+	var center_slope: float = _slope_deg_at_ts(pos_x, pos_z, noise)
 	if (decor.decor_name.is_empty() or not decor_scenes.has(decor.decor_name.to_lower())
 			or center_h < decor.min_height or center_h > decor.max_height
-			or not _is_slope_allowed_ts(decor, pos_x, pos_z, center_slope, bm, noise)
+			or not _is_slope_allowed_ts(decor, pos_x, pos_z, center_slope, noise)
 			or rng.randf() >= decor.spawn_chance):
 		return false
 	return true
 
-func _is_slope_allowed_ts(decor: DecorData, cx: float, cz: float, center_slope: float, bm: BiomeManager, noise: FastNoiseLite) -> bool:
+func _is_slope_allowed_ts(decor: DecorData, cx: float, cz: float, center_slope: float, noise: FastNoiseLite) -> bool:
 	if center_slope > decor.max_slope:
 		return false
 	var ms: Vector2i = decor.mesh_size
@@ -104,25 +102,22 @@ func _is_slope_allowed_ts(decor: DecorData, cx: float, cz: float, center_slope: 
 	var hx: float = ms.x * 0.5
 	var hz: float = ms.y * 0.5
 	for off in [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]:
-		if _slope_deg_at_ts(cx + off.x, cz + off.y, bm, noise) > decor.max_slope:
+		if _slope_deg_at_ts(cx + off.x, cz + off.y, noise) > decor.max_slope:
 			return false
 	return true
 
-func _place_decor_ts(decor: DecorData, transforms_by_name: Dictionary, pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, rot_y: float, bm: BiomeManager, noise: FastNoiseLite) -> void:
-	var decor_name: String = decor.decor_name.to_lower()
-	var best_h: float = parent.chunk_manager.sample_height_ts(pos_x, pos_z, bm, noise)
+func _place_decor_ts(decor: DecorData, transforms_by_name: Array[Transform3D], pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, rot_y: float, noise: FastNoiseLite) -> void:
+	var best_h: float = parent.chunk_manager.sample_height_ts(pos_x, pos_z, noise)
 	var ms: Vector2i = decor.mesh_size
 	if ms.x > 0 or ms.y > 0:
 		var hx: float = ms.x * 0.5
 		var hz: float = ms.y * 0.5
 		for off in [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]:
-			var h: float = parent.chunk_manager.sample_height_ts(pos_x + off.x, pos_z + off.y, bm, noise)
+			var h: float = parent.chunk_manager.sample_height_ts(pos_x + off.x, pos_z + off.y, noise)
 			if h < best_h:
 				best_h = h
 	var rot_basis := Basis(Vector3.UP, rot_y)
-	if not transforms_by_name.has(decor_name):
-		transforms_by_name[decor_name] = []
-	transforms_by_name[decor_name].append(Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z)))
+	transforms_by_name.append(Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z)))
 	if ms.x > 0 or ms.y > 0:
 		var rx: int = int(ceil(float(ms.x) / float(2 * step)))
 		var rz: int = int(ceil(float(ms.y) / float(2 * step)))
@@ -130,26 +125,19 @@ func _place_decor_ts(decor: DecorData, transforms_by_name: Dictionary, pos_x: fl
 			for dz in range(-rz, rz + 1):
 				blocked[Vector2i(gx + dx, gz + dz)] = true
 
-func _slope_deg_at_ts(wx: float, wz: float, bm: BiomeManager, noise: FastNoiseLite) -> float:
-	var n: Vector3 = parent.chunk_manager.sample_normal_ts(wx, wz, bm, noise)
+func _slope_deg_at_ts(wx: float, wz: float, noise: FastNoiseLite) -> float:
+	var n: Vector3 = parent.chunk_manager.sample_normal_ts(wx, wz, noise)
 	var ny: float = clamp(n.dot(Vector3.UP), -1.0, 1.0)
 	return rad_to_deg(atan2(sqrt(max(0.0, 1.0 - ny * ny)), ny))
 
-func spawn_meshes(decor_name: String, transforms: Array, loc: Vector2i) -> void:
-	var scene: PackedScene = decor_scenes.get(decor_name, null)
+func spawn_meshes(decor: DecorData, transforms: Array[Transform3D], loc: Vector2i) -> void:
+	var scene: PackedScene = decor_scenes.get(decor.decor_name.to_lower(), null)
 	if not scene:
-		push_warning("spawn_meshes: no scene loaded for '%s'" % decor_name)
+		push_warning("spawn_meshes: no scene loaded for '%s'" % decor)
 		return
 
-	# Find visibility_range from placement rules for this asset.
-	var vis_range: float = 0.0
-	for decor in decor_datas:
-		if decor.decor_name.to_lower() == decor_name and decor.visibility_range > 0.0:
-			vis_range = decor.visibility_range
-			break
-
 	# Use a stable int slot key derived from the asset name hash.
-	var name_hash: int = decor_name.hash()
+	var name_hash: int = decor.decor_name.hash()
 	var slot_key := Vector3i(loc.x, loc.y, name_hash)
 	var nodes: Array = _scene_nodes.get(slot_key, [])
 	if transforms.size() == 0:
@@ -157,15 +145,13 @@ func spawn_meshes(decor_name: String, transforms: Array, loc: Vector2i) -> void:
 		_scene_nodes[slot_key] = nodes
 		return
 
-#	print("[DecorManager] spawn_meshes: ", decor_name, " count=", transforms.size(), " chunk=", loc)
-	# Heuristic: attempt to batch into a MultiMeshInstance3D when the scene is simple
-	# (only a single MeshInstance3D, no collision/physics nodes and no scripts).
-	var decor_multimesh_data := get_decor_multimesh_data(scene)
+	# Use cached multimesh eligibility computed at startup.
+	var decor_multimesh_data: Dictionary = _multimesh_cache.get(decor.decor_name.to_lower(), {})
 	
 	if decor_multimesh_data.can_multimesh:
-		nodes.append(get_meshes_multimesh(transforms,decor_multimesh_data.mesh_res,decor_multimesh_data.mesh_local_transform, vis_range))
+		nodes.append(get_meshes_multimesh(transforms,decor_multimesh_data.mesh_res,decor_multimesh_data.mesh_local_transform, decor.visibility_range))
 	else:
-		nodes.append_array(get_meshes_simple(transforms, vis_range, scene))
+		nodes.append_array(get_meshes_simple(transforms, decor.visibility_range, scene))
 	_scene_nodes[slot_key] = nodes
 
 func get_decor_multimesh_data(scene: PackedScene) ->Dictionary:
@@ -207,7 +193,7 @@ func get_decor_multimesh_data(scene: PackedScene) ->Dictionary:
 		"mesh_local_transform": mesh_local_transform
 	}
 		
-func get_meshes_multimesh(transforms:Array, mesh_res: Mesh, mesh_local_transform: Transform3D, vis_range: float) -> MultiMeshInstance3D: # Build a MultiMesh and a single MultiMeshInstance3D for this chunk+asset
+func get_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_local_transform: Transform3D, vis_range: float) -> MultiMeshInstance3D: # Build a MultiMesh and a single MultiMeshInstance3D for this chunk+asset
 	var mm: MultiMesh = MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.instance_count = transforms.size()
@@ -222,7 +208,7 @@ func get_meshes_multimesh(transforms:Array, mesh_res: Mesh, mesh_local_transform
 		_apply_visibility_range_recursive(mm_inst, vis_range)
 	return mm_inst
 	
-func get_meshes_simple(transforms:Array, vis_range: float, scene: PackedScene) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
+func get_meshes_simple(transforms: Array[Transform3D], vis_range: float, scene: PackedScene) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
 	var nodes: Array[Node3D] = []
 	for t in transforms:
 		var node: Node3D = scene.instantiate()
