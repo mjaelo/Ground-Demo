@@ -19,13 +19,12 @@ var gravity_enabled: bool = true :
 		gravity_enabled = p_value
 		if not gravity_enabled:
 			velocity.y = 0
-			
+
 var collision_enabled: bool = true :
 	set(p_value):
 		collision_enabled = p_value
 		$CollisionShapeBody.disabled = ! collision_enabled
 		$CollisionShapeRay.disabled = ! collision_enabled
-
 
 func init():
 	gravity_enabled = false
@@ -35,13 +34,14 @@ func _physics_process(p_delta) -> void:
 	var direction: Vector3 = get_camera_relative_input()
 	var h_veloc: Vector2 = Vector2(direction.x, direction.z).normalized() * MOVE_SPEED
 	if Input.is_key_pressed(KEY_SHIFT):
-		h_veloc *= 2
+		h_veloc *= 3
 	velocity.x = h_veloc.x
 	velocity.z = h_veloc.y
-	if gravity_enabled:
+	if position.y < GroundConstants.WATER_SURFACE_LEVEL:
+		velocity.y += 30 * p_delta
+	elif gravity_enabled:
 		velocity.y -= 40 * p_delta
 	move_and_slide()
-
 
 # Returns the input vector relative to the camera. Forward is always the direction the camera is facing
 func get_camera_relative_input() -> Vector3:
@@ -63,7 +63,6 @@ func get_camera_relative_input() -> Vector3:
 	if Input.is_key_pressed(KEY_KP_SUBTRACT) or Input.is_key_pressed(KEY_MINUS):
 		MOVE_SPEED = clamp(MOVE_SPEED - .5, 5, 9999)
 	return input_dir
-
 
 func _input(p_event: InputEvent) -> void:
 	if p_event is InputEventMouseButton and p_event.pressed:

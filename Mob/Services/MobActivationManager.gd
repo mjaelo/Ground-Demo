@@ -1,8 +1,6 @@
 extends RefCounted
 class_name MobActivationManager
 
-## Handles player spawning (on initial load) and enemy activation. TODO move into Mob folder?
-
 var _enemy: Enemy = null
 var _player: Player = null
 var _nav_baker: RuntimeNavigationBaker
@@ -20,9 +18,7 @@ func initialize(enemy: Enemy, player: Player, nav_baker: RuntimeNavigationBaker,
 	_nav_baker.player = player
 	nav_baker.bake_finished.connect(on_nav_bake_finished)
 
-## Called by GroundManager.initial_load_complete signal.
-## Spawns the player on the terrain and activates the enemy.
-func activate_mobs() -> void:
+func activate_player() -> void:
 	if is_player_activated:
 		return
 	# Ensure height is explicitly cast to float (some return values can be Variant)
@@ -31,9 +27,8 @@ func activate_mobs() -> void:
 	_player.gravity_enabled = true
 	_player.collision_enabled = true
 	is_player_activated = true
-	_activate_enemy()
 
-func _activate_enemy() -> void:
+func activate_enemy() -> void:
 	if is_enemy_activated:
 		return
 	var player_pos: Vector3 = _player.global_transform.origin

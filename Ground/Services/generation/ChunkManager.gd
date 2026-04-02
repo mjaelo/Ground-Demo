@@ -41,8 +41,11 @@ func generate_chunk_data(loc: Vector2i, lod_tier: int) -> ChunkData:
 		total_weight += w
 	data.prominent_biomes = []
 	for i in range(biome_count):
+		var bd: BiomeData = parent.biome_manager.biomes[i]
+		if bd.has_water:
+			data.has_water = true
 		if biome_weight_totals[i] >= total_weight * prominence_threshold:
-			data.prominent_biomes.append(parent.biome_manager.biomes[i])
+			data.prominent_biomes.append(bd)
 	# Splatmap generation (RGBA = texture weights)
 	var splatmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RGBA8)
 	splatmap = get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,lod_tier)

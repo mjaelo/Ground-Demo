@@ -5,6 +5,7 @@ class_name Main
 @onready var ground: GroundManager = $Ground
 @onready var ui: UiManager = $UI
 @onready var mob: MobManager = $Mob
+@onready var env: EnvironmentManager = $Environment
 
 var is_startup_done: bool = false
 
@@ -14,13 +15,13 @@ func _ready() -> void:
 	ui.init(mob.player)
 	mob.init(ground)
 	ground.init(mob.player, mob.enemy)
+	env.init()
 	await get_tree().process_frame
 
 func _process(_delta: float) -> void: # TODO can be done more rarely
 	if Engine.is_editor_hint():
 		return
 	var player_chunk_loc: Vector2i = mob.get_player_chunk_loc()
-	
 	if is_startup_done:
 		loaded_tick(player_chunk_loc)
 	else:
@@ -29,6 +30,7 @@ func _process(_delta: float) -> void: # TODO can be done more rarely
 func loaded_tick(player_chunk_loc: Vector2i) -> void:
 	ground.loaded_tick(player_chunk_loc)
 	ui.loaded_tick()
+	env.loaded_tick(mob.get_player_position())
 
 func unloaded_tick(player_chunk_loc: Vector2i) -> void:
 	ground.unloaded_tick(player_chunk_loc)

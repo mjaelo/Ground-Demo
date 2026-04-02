@@ -8,6 +8,7 @@ const HEIGHT_MIN: float = 0.0
 const HEIGHT_MAX: float = 800.0
 const CHUNK_SIZE: int = 256
 const TEXTURES_FILE_PATH := "res://assets/textures/texture_values.json"
+const WATER_SURFACE_LEVEL: float = -1.0
 
 # ── BIOMES ────────────────────────────────────────────────────────────
 const BIOME_VALUES_PATH := "res://assets/biomes/biome_values.json"
@@ -21,10 +22,9 @@ const DECOR_STEP: int = 2 # Distance between placed mesh instances; lower = dens
 const DECOR_EMPTY_CHANCE: float = 0.3
 
 # ── CHUNKS ─────────────────────────────────────────
-
 const initial_chunk_radius: int = 1
-const close_radius: int = 2
-const far_radius: int = 22
+const close_radius: int = 3
+const far_radius: int = 30
 const close_resolution: int = 48
 const far_resolution: int = 6
 const REMOVE_CHUNKS_MARGIN: int = 3

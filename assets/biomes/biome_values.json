@@ -22,7 +22,7 @@
     },
     {
       "name": "Village",
-      "steepness_level": 10.0,
+      "steepness_level": 0.0,
       "flat_texture_id": 3,
       "steep_texture_id": 0,
       "lod_texture_id": 3,
@@ -32,12 +32,13 @@
     },
     {
       "name": "Swamp",
-      "steepness_level": 0,
+      "steepness_level": -30.0,
       "flat_texture_id": 2,
       "steep_texture_id": 0,
       "lod_texture_id": 2,
       "biome_rarity": 2,
       "biome_size": 2.0,
+      "has_water": true,
       "allowed_decor_ids": ["Rock"]
     }
   ]

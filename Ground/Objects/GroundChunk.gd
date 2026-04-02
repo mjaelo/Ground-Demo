@@ -19,7 +19,6 @@ var heightmap: Image:
 ## Build the chunk node hierarchy from a ChunkData.
 ## Call on the main thread after generating data on a worker.
 static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial) -> GroundChunk:
-	var add_collision := chunk_d.lod_tier == GroundConstants.LOD_LEVELS.CLOSE
 	var chunk := GroundChunk.new()
 	chunk.data = chunk_d
 
@@ -40,23 +39,53 @@ static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial) -> 
 
 	chunk.mesh_instance = mi
 
-	if add_collision:
-		var body := StaticBody3D.new()
-		body.collision_layer = 1
-		body.collision_mask = 0
-		var col_shape := CollisionShape3D.new()
-		col_shape.shape = _build_heightmap_shape(chunk_d.heightmap, res)
-		# HeightMapShape3D is centered at origin with 1-unit cell spacing.
-		# Scale by cell size and offset by half-chunk so it aligns with the visual mesh
-		# (which spans [0, CHUNK_SIZE] in X/Z relative to the MeshInstance3D position).
-		var cell_size: float = float(GroundConstants.CHUNK_SIZE) / float(res - 1)
-		col_shape.scale = Vector3(cell_size, 1.0, cell_size)
-		col_shape.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, 0.0, GroundConstants.CHUNK_SIZE * 0.5)
-		body.add_child(col_shape)
+	if chunk_d.has_water:
+		var wmi := get_water_mi()
+		mi.add_child(wmi)
+
+	if chunk_d.lod_tier == GroundConstants.LOD_LEVELS.CLOSE:
+		var body := get_collision(chunk_d, res)
 		mi.add_child(body)
 		chunk.collision_body = body
 
 	return chunk
+
+static func get_collision(chunk_d:ChunkData, res: int ) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var col_shape := CollisionShape3D.new()
+	col_shape.shape = _build_heightmap_shape(chunk_d.heightmap, res)
+	var cell_size: float = float(GroundConstants.CHUNK_SIZE) / float(res - 1)
+	col_shape.scale = Vector3(cell_size, 1.0, cell_size)
+	col_shape.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, 0.0, GroundConstants.CHUNK_SIZE * 0.5)
+	body.add_child(col_shape)
+	return body
+
+static var _shared_water_mesh: Mesh = null
+static var _shared_water_material: StandardMaterial3D = null
+
+static func get_water_mi() ->MeshInstance3D:
+	# Lazily create shared mesh & material
+	if _shared_water_mesh == null:
+		_shared_water_mesh = QuadMesh.new()
+		_shared_water_mesh.size = Vector2(GroundConstants.CHUNK_SIZE, GroundConstants.CHUNK_SIZE)
+	if _shared_water_material == null:
+		_shared_water_material = StandardMaterial3D.new()
+		_shared_water_material.albedo_color = Color(0.0, 0.35, 0.65, 0.5)
+		_shared_water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_shared_water_material.roughness = 0.2
+		_shared_water_material.metallic = 0.0
+
+	# Create a lightweight MeshInstance referencing shared mesh & material
+	var wmi := MeshInstance3D.new()
+	wmi.mesh = _shared_water_mesh
+	wmi.material_override = _shared_water_material
+	# Rotate the quad to lie flat on XZ and center it in the chunk
+	wmi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	wmi.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, 0.0, GroundConstants.CHUNK_SIZE * 0.5)
+	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return wmi
 
 ## Free the visual and collision nodes.
 func destroy() -> void:

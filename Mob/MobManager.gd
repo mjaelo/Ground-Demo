@@ -12,10 +12,14 @@ func init(ground:GroundManager) -> void:
 	mob_activation_manager.initialize(enemy, player, nav_baker, ground)
 
 func activate() -> void:
-	mob_activation_manager.activate_mobs()
+	mob_activation_manager.activate_player()
+	mob_activation_manager.activate_enemy()
 
 func get_player_chunk_loc() -> Vector2i:
 	return GroundUtils.world_pos_to_chunk_loc(player.global_transform.origin)
+
+func get_player_position() -> Vector3:
+	return player.position
 
 func get_load_status() -> String:
 	return " Player ready: %s\nEnemy ready: %s" % [mob_activation_manager.is_player_activated, mob_activation_manager.is_enemy_activated]

@@ -30,7 +30,6 @@ func _ready() -> void:
 
 # ───────────────────────────────────────────────────────────────────────────
 func _build_house() -> void:
-	print("Building house at ", position, " with seed ", _build_count)
 	$TemporaryMesh.queue_free()
 	# ---- clear children ----------------------------------------------------
 	for c in get_children():

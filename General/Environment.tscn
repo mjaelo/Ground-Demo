@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://bb2lp50sjndus"]
 
+[ext_resource type="Script" uid="uid://5m6qp5hj5an2" path="res://General/EnvironmentManager.gd" id="1_8rrqs"]
+
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_vibap"]
 sky_top_color = Color(0.192157, 0.282353, 0.509804, 1)
 sky_horizon_color = Color(0.505882, 0.615686, 0.709804, 1)
@@ -21,6 +23,7 @@ tonemap_mode = 3
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_0gcl0"]
 
 [node name="Environment" type="Node3D" unique_id=73707282]
+script = ExtResource("1_8rrqs")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=55960032]
 environment = SubResource("Environment_8jcgm")
