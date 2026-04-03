@@ -12,13 +12,13 @@ var is_startup_done: bool = false
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-	ui.init(mob.player)
+	ui.init(mob.player, ground)
 	mob.init(ground)
 	ground.init(mob.player, mob.enemy)
 	env.init()
 	await get_tree().process_frame
 
-func _process(_delta: float) -> void: # TODO can be done more rarely
+func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	var player_chunk_loc: Vector2i = mob.get_player_chunk_loc()
@@ -29,16 +29,16 @@ func _process(_delta: float) -> void: # TODO can be done more rarely
 		
 func loaded_tick(player_chunk_loc: Vector2i) -> void:
 	ground.loaded_tick(player_chunk_loc)
-	ui.loaded_tick()
+	ui.loaded_tick(player_chunk_loc)
 	env.loaded_tick(mob.get_player_position())
 
 func unloaded_tick(player_chunk_loc: Vector2i) -> void:
 	ground.unloaded_tick(player_chunk_loc)
 	var load_status := ground.get_load_status() + "\n" + mob.get_load_status()
 	ui.unloaded_tick(load_status)
-	try_activate_modules(player_chunk_loc)
+	check_startup(player_chunk_loc)
 
-func try_activate_modules(player_chunk_loc: Vector2i) -> void:
+func check_startup(player_chunk_loc: Vector2i) -> void:
 	if ground.is_ground_ready(player_chunk_loc):
 		ui.activate()
 		ground.activate()

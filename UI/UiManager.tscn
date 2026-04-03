@@ -34,11 +34,14 @@ Collision toggle: C
 
 Window
 Quit: F8
-UI toggle: F9
 Render mode: F10
 Full screen: F11
 Mouse toggle: Escape
-"
+
+			Chunk
+			Biome: %d
+			Loc: %d
+			Decor Spawned: %d"
 
 [node name="Panel" type="Panel" parent="Label" unique_id=748762141]
 modulate = Color(1, 1, 1, 0.392157)
@@ -47,7 +50,7 @@ layout_mode = 0
 offset_left = -5.0
 offset_top = -5.0
 offset_right = 248.0
-offset_bottom = 444.0
+offset_bottom = 647.0
 
 [node name="HSeparator" type="HSeparator" parent="Label/Panel" unique_id=1809810135]
 top_level = true
@@ -65,7 +68,16 @@ offset_top = 310.0
 offset_right = 246.0
 offset_bottom = 319.0
 
+[node name="HSeparator3" type="HSeparator" parent="Label/Panel" unique_id=1400057973]
+top_level = true
+layout_mode = 0
+offset_left = 5.0
+offset_top = 467.0
+offset_right = 245.0
+offset_bottom = 476.0
+
 [node name="Loading" type="Control" parent="." unique_id=123456789]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0

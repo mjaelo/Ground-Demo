@@ -157,3 +157,6 @@ editor_settings.tres
 
 # Godot UID metadata
 *.uid
+
+# other
+*.md

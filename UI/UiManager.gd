@@ -2,7 +2,7 @@ extends Control
 class_name UiManager
 
 var player: Player
-var visible_mode: int = 1
+var ground: GroundManager
 @onready var info_node := $Label
 @onready var loading_node := $Loading
 @onready var loading_label := $Loading/VBoxContainer/LoadingLabel
@@ -10,21 +10,21 @@ var visible_mode: int = 1
 
 var loading_ticks: int = 0
 
-func init(_player:Player) -> void:
+func init(_player:Player, _ground:GroundManager) -> void:
 	player = _player
+	ground = _ground
 	RenderingServer.set_debug_generate_wireframes(true)
 	NavigationServer3D.set_debug_enabled(true)
 	
 	loading_node.visible = true
 	info_node.visible = false
 
-func loaded_tick() -> void:
-	info_node.text = "FPS: %d\n" % Engine.get_frames_per_second()
-	if(visible_mode == 1):
-		info_node.text += "Move Speed: %.1f\n" % player.MOVE_SPEED if player else ""
-		if player:
-			info_node.text += "Position: %.1v\n" % player.global_position
-		info_node.text += """
+func loaded_tick(player_chunk_loc: Vector2i) -> void:
+	var loaded_text := """FPS: %d
+			Move Speed: %.1f
+			Position: %.1v
+			""" % [Engine.get_frames_per_second(), player.MOVE_SPEED, player.global_position]
+	loaded_text += """
 			Player
 			Move: WASDEQ,Space,Mouse
 			Move speed: Wheel,+/-,Shift
@@ -34,11 +34,19 @@ func loaded_tick() -> void:
 
 			Window
 			Quit: F8
-			UI toggle: F9
 			Render mode: F10
 			Full screen: F11
 			Mouse toggle: Escape / F12
 			"""
+	var biome_name := ground.biome_manager.get_dominant_biome_at(player.position.x, player.position.z).biome_name
+	var decor_spawned:bool = ground.chunk_manager.chunks.get(player_chunk_loc).are_decors_spawned
+	loaded_text += """
+			Chunk
+			Biome: %s
+			Loc: %s
+			Decor Spawned: %s
+			""" % [biome_name, player_chunk_loc, decor_spawned]
+	info_node.text = loaded_text
 
 func unloaded_tick(status:String) -> void:
 	loading_ticks += 1
@@ -54,18 +62,14 @@ func activate() -> void:
 	loading_node.visible = false
 	info_node.visible = true
 
-# ── Input ────────────────────────────────────────────────────────────── TODO clean up
+# ── Input ──────────────────────────────────────────────────────────────
 func _unhandled_key_input(p_event: InputEvent) -> void:
 	if p_event is InputEventKey and p_event.pressed:
 		match p_event.keycode:
 			KEY_F8:
 				get_tree().quit()
-			KEY_F9:
-				visible_mode = (visible_mode + 1 ) % 3
-				info_node.visible = (visible_mode == 1)
-				visible = visible_mode > 0
 			KEY_F10:
-				var vp = get_viewport()
+				var vp := get_viewport()
 				vp.debug_draw = (vp.debug_draw + 1 ) % 6
 				get_viewport().set_input_as_handled()
 			KEY_F11:

@@ -72,7 +72,7 @@ static func get_water_mi() ->MeshInstance3D:
 		_shared_water_mesh.size = Vector2(GroundConstants.CHUNK_SIZE, GroundConstants.CHUNK_SIZE)
 	if _shared_water_material == null:
 		_shared_water_material = StandardMaterial3D.new()
-		_shared_water_material.albedo_color = Color(0.0, 0.35, 0.65, 0.5)
+		_shared_water_material.albedo_color = Color(0.0, 0.35, 0.65, 0.25)
 		_shared_water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_shared_water_material.roughness = 0.2
 		_shared_water_material.metallic = 0.0
@@ -83,7 +83,7 @@ static func get_water_mi() ->MeshInstance3D:
 	wmi.material_override = _shared_water_material
 	# Rotate the quad to lie flat on XZ and center it in the chunk
 	wmi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	wmi.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, 0.0, GroundConstants.CHUNK_SIZE * 0.5)
+	wmi.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, GroundConstants.WATER_SURFACE_LEVEL, GroundConstants.CHUNK_SIZE * 0.5)
 	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return wmi
 
@@ -103,8 +103,8 @@ static func _build_heightmap_shape(img: Image, res: int) -> HeightMapShape3D:
 	shape.map_depth = res
 	var heights := PackedFloat32Array()
 	heights.resize(res * res)
-	for z in res:
-		for x in res:
+	for z in range(res):
+		for x in range(res):
 			heights[z * res + x] = img.get_pixel(x, z).r
 	shape.map_data = heights
 	return shape
@@ -117,8 +117,8 @@ static func _build_mesh(img: Image, res: int) -> ArrayMesh:
 
 	var inv := 1.0 / float(res - 1)
 	# Add all vertices with UVs (normals will be generated later)
-	for y in res:
-		for x in res:
+	for y in range(res):
+		for x in range(res):
 			var u: float = float(x) * inv
 			var v: float = float(y) * inv
 			var h: float = img.get_pixel(x, y).r

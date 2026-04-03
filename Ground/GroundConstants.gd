@@ -29,13 +29,14 @@ const close_resolution: int = 48
 const far_resolution: int = 6
 const REMOVE_CHUNKS_MARGIN: int = 3
 
+# ── Performance ─────────────────────────────────────────
 const STARTUP_DECOR_THREADS: int = 16
 const STARTUP_CHUNK_THREADS: int = 4
 const STARTUP_CHUNKS_PER_FRAME: int = 16
 const STARTUP_LOD_PER_FRAME: int = 100
 
 const STEADY_CHUNK_THREADS: int = 4
-const STEADY_DECOR_THREADS: int = 4
+const STEADY_DECOR_THREADS: int = 2
 const STEADY_CHUNKS_PER_FRAME: int = 4
 const STEADY_LOD_PER_FRAME: int = 30
 

@@ -24,8 +24,8 @@ func init():
 		_orig_fog_depth_end = _env.fog_depth_end
 
 func loaded_tick(player_pos:Vector3):
-	if player_pos.y < GroundConstants.WATER_SURFACE_LEVEL:
-		if !is_under_water && player_pos.y < GroundConstants.WATER_SURFACE_LEVEL-1.0:
+	if player_pos.y < GroundConstants.WATER_SURFACE_LEVEL-1.0:
+		if !is_under_water && player_pos.y < GroundConstants.WATER_SURFACE_LEVEL-2.0:
 			submerge()
 	elif is_under_water:
 		surface()

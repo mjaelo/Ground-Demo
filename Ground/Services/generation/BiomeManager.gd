@@ -2,17 +2,21 @@ extends RefCounted
 class_name BiomeManager
 
 var biomes: Array[BiomeData] = []
-var _noises: Array[FastNoiseLite] = []
+var size_noises: Array[FastNoiseLite] = []
+var height_noises: Array[FastNoiseLite] = []
 
 # TODO move Constants to GroundConstants
-# Base seed; each biome offsets from this.
-var noise_seed: int = 7891
-# Controls how sharply biomes separate for texture blending. Higher = sharper.
-var blend_sharpness: float = 50.0
-var height_blend_sharpness: float = 10.0
+# Controls how sharply biomes separate for texture/hill blending. Higher = sharper.
+var texture_blend_sharpness: float = 50.0
+var height_blend_sharpness: float = 5.0
 
-const SIZE_BASE_FREQ: float = 0.00015
-const SIZE_EXPONENT: float = 0.5
+# Base seed; each biome offsets from this.
+const noise_seed: int = 7891
+const SIZE_BASE_FREQ := 0.00015
+const HEIGHT_BASE_FREQ := 0.0015
+const SIZE_EXPONENT := 0.5
+const HEIGHT_EXPONENT := 1.0
+const BIOME_HEIGHT_THRESHOLD := 0.01
 
 # ─ Initialization ─────────────────────────────────────────────────────
 func _init() -> void:
@@ -25,34 +29,91 @@ func _load_biomes_from_json() -> void:
 		push_warning("BiomeManager: parsed 0 valid biomes from %s" % GroundConstants.BIOME_VALUES_PATH)
 
 func _build_noises() -> void:
-	_noises.clear()
+	size_noises.clear()
+	height_noises.clear()
 	for i in range(biomes.size()):
 		var n := FastNoiseLite.new()
 		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		var freq := get_biome_frequency((biomes[i] as BiomeData).biome_size)
+		var s: float = pow(biomes[i].biome_size, SIZE_EXPONENT)
+		var freq := SIZE_BASE_FREQ / maxf(s, 0.0001)
 		n.frequency = freq
-		# Different seed per biome
 		n.seed = noise_seed + i * 5137
-		_noises.append(n)
+		size_noises.append(n)
+
+		var hn := FastNoiseLite.new()
+		hn.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		var s2: float = pow(biomes[i].steepness_level/100, HEIGHT_EXPONENT)
+		var freq2 := HEIGHT_BASE_FREQ / maxf(s2, 0.0001)
+		hn.frequency = freq2
+		hn.seed = noise_seed + i * 5137 + 99991
+		height_noises.append(hn)
 
 # ── Core API ──────────────────────────────────────────────────────────
-# Compute terrain height (0..1 fraction) at a world position.
-func sample_height(noise: FastNoiseLite, world_x: float, world_z: float) -> float:
-	var bw := _height_biome_weights(world_x, world_z)
-	var raw01: float = (noise.get_noise_2d(world_x, world_z) + 1.0) * 0.5
-	var amplitude: float = 0.0
-	for i in range(bw.size()):
-		var w := bw[i]
-		if w < 0.001:
+# Compute terrain height at a world position. 
+func get_height_at(world_x: float, world_z: float) -> float:
+	var biome_scores := _compute_biome_scores(world_x, world_z)
+	var biome_count := biome_scores.size()
+	var minimal_offset: float = -INF
+	for i in range(biome_count):
+		if biomes[i].offset > minimal_offset && biome_scores[i] >= BIOME_HEIGHT_THRESHOLD:
+			minimal_offset = biomes[i].offset
+	
+	# ── Step 1: terrain height ignoring biomes with offset < minimal_offset
+	var height_biome_weights_full: Array[float] = _weights_with_sharpness(biome_scores, height_blend_sharpness)
+	var high_biome_weights: Array[float] = []
+	high_biome_weights.resize(biome_count)
+	for i in range(biome_count):
+		high_biome_weights[i] = height_biome_weights_full[i]
+		if biomes[i].offset < minimal_offset:
+			high_biome_weights[i] = 0.0
+
+	# with elevated-only normalized height weights, compute high_biomes_y
+	var high_biomes_y: float = 0.0
+	for i in range(biome_count):
+		var high_biome_weight := high_biome_weights[i]
+		if high_biome_weight < BIOME_HEIGHT_THRESHOLD:
 			continue
-		var s_level: float = float((biomes[i] as BiomeData).steepness_level)
-		var mag: float = clampf(abs(s_level) * 0.01, 0.0, 1.0)
-		var signer: float = -1.0 if s_level < 0.0 else 1.0
-		amplitude += signer * mag * w
-	return clampf(raw01 * amplitude, -1.0, 1.0)
+		var high_biome_y := get_biome_y(world_x, world_z, i)
+		high_biomes_y += high_biome_weight * high_biome_y
+
+	# ── Step 2: downward pull ──────────────────────
+	# Determine dominant high biome weight using the elevated-only weights
+	var dominant_high_biome_weight: float = 0.0
+	for i in range(biome_count):
+		if biomes[i].offset >= minimal_offset and high_biome_weights[i] > dominant_high_biome_weight:
+			dominant_high_biome_weight = high_biome_weights[i]
+
+	# only pull downward if a low-offset biome dominates locally
+	var final_height: float = high_biomes_y
+	for i in range(biome_count):
+		if biomes[i].offset >= minimal_offset:
+			continue
+		# use the full height weights (not the elevated-only copy) so low biomes can exert pull
+		var low_biome_height_weight: float = height_biome_weights_full[i]
+		if low_biome_height_weight <= dominant_high_biome_weight:
+			continue  # ignore non dominant low biomes
+		# calculate pull_power (0,1) without dividing by 0
+		var downwards_pull_power: float = (low_biome_height_weight - dominant_high_biome_weight) / maxf((1.0 - dominant_high_biome_weight), 0.001)
+		downwards_pull_power = clampf(downwards_pull_power, 0.0, 1.0)
+		downwards_pull_power = downwards_pull_power * downwards_pull_power * (3.0 - 2.0 * downwards_pull_power)  # smoothstep
+		# Depression's own height.
+		var low_biome_y: float = get_biome_y(world_x, world_z, i)
+		# lower final height by pull power (0,1) toward low_biome_y
+		final_height = lerpf(final_height, low_biome_y, downwards_pull_power)
+
+	return final_height
+
+func get_biome_y(world_x, world_z, i) -> float:
+	var range_y: float = GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN
+	var biome_d := biomes[i]
+	var offset_y: float = GroundConstants.HEIGHT_MIN + biome_d.offset
+	var steepness_percent: float = biome_d.steepness_level * 0.01
+	var max_hill_y: float = pow(steepness_percent, 2.0) * range_y * 0.6
+	var positive_noise_value: float = (height_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
+	return offset_y + positive_noise_value * max_hill_y
 
 # Returns the dominant BiomeData at a world position.
-func get_biome_at(world_x: float, world_z: float) -> BiomeData:
+func get_dominant_biome_at(world_x: float, world_z: float) -> BiomeData:
 	var bw := _biome_weights(world_x, world_z)
 	var best_i := 0
 	for i in range(1, bw.size()):
@@ -68,7 +129,7 @@ func _compute_biome_scores(world_x: float, world_z: float) -> Array[float]:
 	var scores: Array[float] = []
 	scores.resize(count)
 	for i in range(count):
-		var raw: float = (_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
+		var raw: float = (size_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
 		scores[i] = get_biome_score_with_size(raw, (biomes[i] as BiomeData).biome_rarity, (biomes[i] as BiomeData).biome_size)
 	return scores
 
@@ -94,11 +155,8 @@ func _weights_with_sharpness(scores: Array[float], sharpness: float) -> Array[fl
 	return weights
 
 func _biome_weights(world_x: float, world_z: float) -> Array[float]:
-	return _weights_with_sharpness(_compute_biome_scores(world_x, world_z), blend_sharpness)
+	return _weights_with_sharpness(_compute_biome_scores(world_x, world_z), texture_blend_sharpness)
 
-# Like _biome_weights but uses height_blend_sharpness.
-func _height_biome_weights(world_x: float, world_z: float) -> Array[float]:
-	return _weights_with_sharpness(_compute_biome_scores(world_x, world_z), height_blend_sharpness)
 
 func get_biome_score_with_size(raw01: float, biome_rarity: float, biome_size: float) -> float:
 	var r: float = maxf(biome_rarity, 0.0001)
@@ -110,9 +168,3 @@ func get_biome_score_with_size(raw01: float, biome_rarity: float, biome_size: fl
 	elif biome_size < 1.0:
 		size_bias = maxf(1.0 - log(1.0 / biome_size) * 0.2, 0.3)
 	return rarity_score * size_bias
-
-func get_biome_frequency(biome_size) -> float:
-	if biome_size <= 0.0:
-		return SIZE_BASE_FREQ
-	var s: float = pow(float(biome_size), SIZE_EXPONENT)
-	return SIZE_BASE_FREQ / maxf(s, 0.0001)

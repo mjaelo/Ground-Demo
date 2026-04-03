@@ -139,11 +139,10 @@ func _start_decor_thread(loc: Vector2i, decor_idx: int, blocked_in: Dictionary) 
 	var decor := parent.decor_manager.decor_datas[decor_idx]
 	var chunk_size := GroundConstants.CHUNK_SIZE
 	var chunk_center := Vector3(loc.x * chunk_size + chunk_size * 0.5, 0, loc.y * chunk_size + chunk_size * 0.5)
-	var thread_noise: FastNoiseLite = parent.noise.duplicate() as FastNoiseLite
 	var thread := Thread.new()
 	decor_threads[loc] = thread
 	var callable := func() -> DecorThreadResult:
-		var tmap: Array[Transform3D] = parent.decor_manager.generate_transforms_for_decor(chunk_center, blocked_in, decor, thread_noise)
+		var tmap: Array[Transform3D] = parent.decor_manager.generate_transforms_for_decor(chunk_center, blocked_in, decor)
 		return DecorThreadResult.new().init(loc, tmap, blocked_in, decor_idx)
 	if thread.start(callable) != OK:
 		push_error("[GroundThreadManager] Failed to start decor thread for %s" % str(loc))

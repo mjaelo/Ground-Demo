@@ -1,4 +1,4 @@
-﻿{
+{
   "biomes": [
     {
       "name": "Plains",
@@ -13,11 +13,11 @@
     {
       "name": "Mountain",
       "steepness_level": 100.0,
-      "flat_texture_id": 0,
+      "flat_texture_id": 1,
       "steep_texture_id": 0,
       "lod_texture_id": 0,
       "biome_rarity": 2,
-      "biome_size": 0.25,
+      "biome_size": 0.5,
       "allowed_decor_ids": ["Rock","Grass", "Tree"]
     },
     {
@@ -31,10 +31,11 @@
       "allowed_decor_ids": ["House","Grass", "Tree", "Rock"]
     },
     {
-      "name": "Swamp",
-      "steepness_level": -30.0,
+      "name": "Lake",
+      "steepness_level": 20.0,
+      "offset": -200.0,
       "flat_texture_id": 2,
-      "steep_texture_id": 0,
+      "steep_texture_id": 2,
       "lod_texture_id": 2,
       "biome_rarity": 2,
       "biome_size": 2.0,

@@ -34,10 +34,10 @@ func _physics_process(p_delta) -> void:
 	var direction: Vector3 = get_camera_relative_input()
 	var h_veloc: Vector2 = Vector2(direction.x, direction.z).normalized() * MOVE_SPEED
 	if Input.is_key_pressed(KEY_SHIFT):
-		h_veloc *= 3
+		h_veloc *= 5
 	velocity.x = h_veloc.x
 	velocity.z = h_veloc.y
-	if position.y < GroundConstants.WATER_SURFACE_LEVEL:
+	if position.y < GroundConstants.WATER_SURFACE_LEVEL-1.0:
 		velocity.y += 30 * p_delta
 	elif gravity_enabled:
 		velocity.y -= 40 * p_delta

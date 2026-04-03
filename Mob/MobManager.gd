@@ -22,4 +22,5 @@ func get_player_position() -> Vector3:
 	return player.position
 
 func get_load_status() -> String:
-	return " Player ready: %s\nEnemy ready: %s" % [mob_activation_manager.is_player_activated, mob_activation_manager.is_enemy_activated]
+	var isready := mob_activation_manager != null and mob_activation_manager.is_player_activated and mob_activation_manager.is_enemy_activated
+	return "Mobs ready: %s" % [isready]

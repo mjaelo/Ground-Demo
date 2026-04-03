@@ -69,8 +69,7 @@ func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv
 			for i in range(biome_count):
 				biome_weight_totals[i] += biome_weights[i]
 			# Height: sample via helper and convert to world Y (preserve existing behaviour)
-			var h01: float =  parent.biome_manager.sample_height(parent.noise, world_x, world_z)
-			var h_world: float = GroundConstants.HEIGHT_MIN + h01 * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
+			var h_world: float =  parent.biome_manager.get_height_at(world_x, world_z)
 			heightmap.set_pixel(x, y, Color(h_world, 0, 0, 1))
 	return heightmap
 			
@@ -104,13 +103,13 @@ func get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolu
 				else:
 					var wx: float = float(x + 1) * inv_res * chunk_size + base_x
 					var wz: float = float(y) * inv_res * chunk_size + base_z
-					height_right = sample_height(wx, wz)
+					height_right = parent.biome_manager.get_height_at(wx, wz)
 				if y + 1 < resolution:
 					height_down = heightmap.get_pixel(x, y + 1).r
 				else:
 					var wx: float = float(x) * inv_res * chunk_size + base_x
 					var wz: float = float(y + 1) * inv_res * chunk_size + base_z
-					height_down = sample_height(wx, wz)
+					height_down = parent.biome_manager.get_height_at(wx, wz)
 				# Calculate slope in degrees (either fast gradient-based or original normal->acos)
 				var slope := rad_to_deg(acos(clampf(Vector3(-(height_right - height_center) / cell_size, 1.0, -(height_down - height_center) / cell_size).normalized().dot(Vector3.UP), -1.0, 1.0)))
 				# Smooth blend factor: 0 = fully flat texture, 1 = fully steep texture
@@ -169,31 +168,23 @@ func _remove_chunk(loc: Vector2i) -> void:
 	parent.decor_manager.clear_decors(loc)
 
 # ── Terrain sampling ─────────────────────────────────────────────────
-func sample_height(world_x: float, world_z: float) -> float:
-	var h: float = parent.biome_manager.sample_height(parent.noise, world_x, world_z)
-	return GroundConstants.HEIGHT_MIN + h * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
-
-## Thread-safe variant: uses a caller-owned BiomeManager/noise snapshot.
-func sample_height_ts(world_x: float, world_z: float, noise: FastNoiseLite) -> float:
-	var h: float = parent.biome_manager.sample_height(noise, world_x, world_z)
-	return GroundConstants.HEIGHT_MIN + h * (GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN)
-
 func sample_normal(world_x: float, world_z: float) -> Vector3:
-	var bh := sample_height(world_x, world_z)
-	var dx := sample_height(world_x + 1.0, world_z) - bh
-	var dz := sample_height(world_x, world_z + 1.0) - bh
-	return Vector3(-dx, 1.0, -dz).normalized()
+	var world_pos := Vector3(world_x, 0 , world_z)
+	var loc := GroundUtils.world_pos_to_chunk_loc(world_pos)
+	var chunk: GroundChunk = chunks.get(loc, null)
+	if chunk && chunk.heightmap:
+		var bh :float= GroundUtils.height_from_heightmap(chunk.heightmap, world_x, world_z, loc)
+		var dx :float= GroundUtils.height_from_heightmap(chunk.heightmap, world_x+1.0,  world_z, loc) - bh
+		var dz :float= GroundUtils.height_from_heightmap(chunk.heightmap, world_x, world_z+1.0, loc) - bh
+		return Vector3(-dx, 1.0, -dz).normalized()
+	var bh2 :float= parent.biome_manager.get_height_at(world_x, world_z)
+	var dx2 :float= parent.biome_manager.get_height_at(world_x + 1.0, world_z) - bh2
+	var dz2 :float= parent.biome_manager.get_height_at(world_x, world_z + 1.0) - bh2
+	return Vector3(-dx2, 1.0, -dz2).normalized()
 
-## Thread-safe variant.
-func sample_normal_ts(world_x: float, world_z: float, noise: FastNoiseLite) -> Vector3:
-	var bh := sample_height_ts(world_x, world_z, noise)
-	var dx := sample_height_ts(world_x + 1.0, world_z, noise) - bh
-	var dz := sample_height_ts(world_x, world_z + 1.0, noise) - bh
-	return Vector3(-dx, 1.0, -dz).normalized()
-	
 func get_height_at(world_pos: Vector3) -> float:
 	var loc := GroundUtils.world_pos_to_chunk_loc(world_pos)
 	var chunk: GroundChunk = chunks.get(loc, null)
 	if chunk && chunk.heightmap:
-		return GroundUtils.height_from_heightmap(chunk.heightmap, world_pos, loc)
-	return sample_height(world_pos.x, world_pos.z)
+		return GroundUtils.height_from_heightmap(chunk.heightmap, world_pos.x, world_pos.z, loc)
+	return parent.biome_manager.get_height_at(world_pos.x, world_pos.z)
