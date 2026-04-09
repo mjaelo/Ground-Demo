@@ -6,6 +6,7 @@ class_name DecorManager
 var decor_scenes: Dictionary = {}
 var decor_datas: Array[DecorData] = []
 var _scene_nodes: Dictionary = {} # TODO refactor. idk what that is
+# multimesh is only done, when  decor scene is a single mesh (without script), with normal scale and origin
 var _multimesh_cache: Dictionary = {}  # decor_name (lowercase) -> {can_multimesh, mesh_res, mesh_local_transform}
 var parent: GroundManager
 
@@ -160,7 +161,7 @@ func spawn_meshes(decor: DecorData, transforms: Array[Transform3D], loc: Vector2
 		nodes.append_array(get_meshes_simple(transforms, decor.visibility_range, scene))
 	_scene_nodes[slot_key] = nodes
 
-func get_decor_multimesh_data(scene: PackedScene) ->Dictionary:
+func get_decor_multimesh_data(scene: PackedScene) -> Dictionary:
 	var can_multimesh: bool = true
 	var mesh_res: Mesh = null
 	var mesh_local_transform: Transform3D = Transform3D.IDENTITY

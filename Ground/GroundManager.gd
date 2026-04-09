@@ -35,6 +35,7 @@ func init(_player: Player, _enemy: Enemy) -> void:
 	biome_manager = BiomeManager.new()
 	texture_manager = TextureManager.new()
 	boundary_detector = BoundaryDetector.new()
+	boundary_detector.initialize(player)
 	
 	decor_manager = DecorManager.new()
 	decor_manager.initialize(self)

@@ -1,9 +1,16 @@
 ﻿extends RefCounted
 class_name BoundaryDetector
 
+var player: Player = null
+
+func initialize(_player: Player) -> void:
+	player = _player
 
 func update(chunk: GroundChunk) -> void:
-	# Current chunk already has collision — nothing to block.
-	if chunk and chunk.collision_body != null:
+	if not is_instance_valid(player):
 		return
-	# TODO prevent player from moving
+	if chunk == null || chunk.data.lod_tier > GroundConstants.LOD_LEVELS.CLOSE:
+		player.velocity = Vector3.ZERO
+		player.set_physics_process(false)
+	else:
+		player.set_physics_process(true)

@@ -29,6 +29,7 @@ var collision_enabled: bool = true :
 func init():
 	gravity_enabled = false
 	collision_enabled = false
+	set_physics_process(false)
 
 func _physics_process(p_delta) -> void:
 	var direction: Vector3 = get_camera_relative_input()

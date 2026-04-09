@@ -17,6 +17,8 @@ func initialize(enemy: Enemy, player: Player, nav_baker: RuntimeNavigationBaker,
 	_enemy.set_physics_process(false)
 	_nav_baker.player = player
 	nav_baker.bake_finished.connect(on_nav_bake_finished)
+	# Keep player frozen until activate_player() is called
+	_player.set_physics_process(false)
 
 func activate_player() -> void:
 	if is_player_activated:
@@ -26,6 +28,7 @@ func activate_player() -> void:
 	_player.global_transform.origin.y = height_at_player + 5.0
 	_player.gravity_enabled = true
 	_player.collision_enabled = true
+	_player.set_physics_process(true)
 	is_player_activated = true
 
 func activate_enemy() -> void:
