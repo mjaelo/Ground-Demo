@@ -156,9 +156,9 @@ func spawn_meshes(decor: DecorData, transforms: Array[Transform3D], loc: Vector2
 	var decor_multimesh_data: Dictionary = _multimesh_cache.get(decor.decor_name.to_lower(), {})
 	
 	if decor_multimesh_data.can_multimesh:
-		nodes.append(get_meshes_multimesh(transforms,decor_multimesh_data.mesh_res,decor_multimesh_data.mesh_local_transform, decor.visibility_range))
+		nodes.append(get_meshes_multimesh(transforms, decor_multimesh_data.mesh_res, decor_multimesh_data.mesh_local_transform, decor.visibility_range))
 	else:
-		nodes.append_array(get_meshes_simple(transforms, decor.visibility_range, scene))
+		nodes.append_array(get_meshes_simple(transforms, decor.visibility_range, scene, decor.generator_script))
 	_scene_nodes[slot_key] = nodes
 
 func get_decor_multimesh_data(scene: PackedScene) -> Dictionary:
@@ -216,12 +216,14 @@ func get_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_lo
 		_apply_visibility_range_recursive(mm_inst, vis_range)
 	return mm_inst
 	
-func get_meshes_simple(transforms: Array[Transform3D], vis_range: float, scene: PackedScene) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
+func get_meshes_simple(transforms: Array[Transform3D], vis_range: float, scene: PackedScene, generator_script: GDScript = null) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
 	var nodes: Array[Node3D] = []
 	for t in transforms:
 		var node: Node3D = scene.instantiate()
 		node.transform = t
 		parent.get_node("Chunks").add_child(node)
+		if generator_script != null:
+			generator_script.call_generator(node)
 		if vis_range > 0.0:
 			_apply_visibility_range_recursive(node, vis_range)
 		nodes.append(node)

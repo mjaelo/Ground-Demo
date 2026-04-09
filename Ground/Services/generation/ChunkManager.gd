@@ -54,11 +54,6 @@ func generate_chunk_data(loc: Vector2i, lod_tier: int) -> ChunkData:
 	data.splatmap = splatmap
 	return data
 
-func create_chunk(chunk_data: ChunkData) -> GroundChunk:
-	if chunks.has(chunk_data.loc):
-		_remove_chunk(chunk_data.loc)
-	return GroundChunk.build_chunk(chunk_data, parent.texture_manager.shader_material) # TODO move from GroundChunk
-
 func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,biome_weight_totals) ->Image:
 	for x in range(resolution):
 		var world_x: float = float(x) * inv_res * chunk_size + base_x
@@ -149,11 +144,11 @@ func update_distant_chunks(player_loc: Vector2i) -> void:
 	# Remove chunks beyond far_radius that are also out of the frustum.
 	var remove_r: float = GroundConstants.far_radius + GroundConstants.REMOVE_CHUNKS_MARGIN
 	for chunk: GroundChunk in chunks.values():
-		var loc := chunk.loc
+		var loc := chunk.data.loc
 		var dist: float = loc.distance_to(player_loc)
 		if dist > remove_r:
 			_remove_chunk(loc)
-		if chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
+		if chunk.data.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
 				and loc.distance_to(player_loc) > GroundConstants.close_radius + 1 \
 				and chunk.are_decors_spawned and parent.decor_manager:
 			parent.decor_manager.clear_decors(loc)
@@ -172,10 +167,10 @@ func sample_normal(world_x: float, world_z: float) -> Vector3:
 	var world_pos := Vector3(world_x, 0 , world_z)
 	var loc := GroundUtils.world_pos_to_chunk_loc(world_pos)
 	var chunk: GroundChunk = chunks.get(loc, null)
-	if chunk && chunk.heightmap:
-		var bh :float= GroundUtils.height_from_heightmap(chunk.heightmap, world_x, world_z, loc)
-		var dx :float= GroundUtils.height_from_heightmap(chunk.heightmap, world_x+1.0,  world_z, loc) - bh
-		var dz :float= GroundUtils.height_from_heightmap(chunk.heightmap, world_x, world_z+1.0, loc) - bh
+	if chunk && chunk.data.heightmap:
+		var bh :float= GroundUtils.height_from_heightmap(chunk.data.heightmap, world_x, world_z, loc)
+		var dx :float= GroundUtils.height_from_heightmap(chunk.data.heightmap, world_x+1.0,  world_z, loc) - bh
+		var dz :float= GroundUtils.height_from_heightmap(chunk.data.heightmap, world_x, world_z+1.0, loc) - bh
 		return Vector3(-dx, 1.0, -dz).normalized()
 	var bh2 :float= parent.biome_manager.get_height_at(world_x, world_z)
 	var dx2 :float= parent.biome_manager.get_height_at(world_x + 1.0, world_z) - bh2
@@ -185,6 +180,6 @@ func sample_normal(world_x: float, world_z: float) -> Vector3:
 func get_height_at(world_pos: Vector3) -> float:
 	var loc := GroundUtils.world_pos_to_chunk_loc(world_pos)
 	var chunk: GroundChunk = chunks.get(loc, null)
-	if chunk && chunk.heightmap:
-		return GroundUtils.height_from_heightmap(chunk.heightmap, world_pos.x, world_pos.z, loc)
+	if chunk && chunk.data.heightmap:
+		return GroundUtils.height_from_heightmap(chunk.data.heightmap, world_pos.x, world_pos.z, loc)
 	return parent.biome_manager.get_height_at(world_pos.x, world_pos.z)

@@ -49,7 +49,7 @@ func _editor_generate() -> void:
 		for ry in range(-r, r + 1):
 			var loc := Vector2i(rx, ry)
 			var chunk_d := generator.generate_chunk_data(loc, GroundConstants.LOD_LEVELS.CLOSE)
-			var chunk := GroundChunk.build_chunk(chunk_d, mat)
+			var chunk := GroundUtils.build_chunk(chunk_d, mat)
 			chunk.mesh_instance.name = "EditorChunk_%d_%d" % [rx, ry]
 			$"../Chunks".add_child(chunk.mesh_instance)
 			chunk.mesh_instance.owner = get_tree().edited_scene_root

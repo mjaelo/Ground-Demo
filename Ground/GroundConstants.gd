@@ -34,7 +34,17 @@ const far_radius: int = 30
 const close_resolution: int = 48
 const far_resolution: int = 6
 const REMOVE_CHUNKS_MARGIN: int = 3
-
+static var _shared_water_mesh: QuadMesh = (func ()->QuadMesh: 
+	var water_mesh := QuadMesh.new() 
+	water_mesh.size = Vector2(GroundConstants.CHUNK_SIZE, GroundConstants.CHUNK_SIZE) 
+	return water_mesh).call()
+static var _shared_water_material: StandardMaterial3D = (func () -> StandardMaterial3D:
+	var water_material := StandardMaterial3D.new()
+	water_material.albedo_color = Color(0.0, 0.35, 0.65, 0.25)
+	water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water_material.roughness = 0.2
+	water_material.metallic = 0.0
+	return water_material).call()
 # ── Performance ─────────────────────────────────────────
 const STARTUP_DECOR_THREADS: int = 16
 const STARTUP_CHUNK_THREADS: int = 4

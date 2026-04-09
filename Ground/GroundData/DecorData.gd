@@ -17,6 +17,8 @@ var mesh_size: Vector2i = Vector2i.ZERO
 var visibility_range: float = 0.0
 ## Priority for spawning: higher values spawn earlier. (houses high, grass low)
 var priority: int = 0
+## GDScript that procedurally builds the scene after instantiation.
+var generator_script: GDScript = null
 
 static func from_dict(d: Dictionary) -> DecorData:
 	var r := DecorData.new()
@@ -35,4 +37,10 @@ static func from_dict(d: Dictionary) -> DecorData:
 		r.visibility_range = float(d["visibility_range"])
 	if d.has("priority"):
 		r.priority = int(d["priority"])
+	if d.has("generator_script"):
+		var script_path: String = str(d["generator_script"])
+		if ResourceLoader.exists(script_path):
+			r.generator_script = load(script_path)
+		else:
+			push_warning("DecorData: generator_script path not found: '%s'" % script_path)
 	return r

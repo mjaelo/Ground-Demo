@@ -86,7 +86,7 @@ func update_chunk_requests(player_loc: Vector2i, frustum: Array[Plane]) -> void:
 			var desired_res: int = GroundConstants.LOD_LEVELS.CLOSE if dist <= close_r else GroundConstants.LOD_LEVELS.FAR
 			var is_visible: bool = is_chunk_visible(loc, frustum)
 			# Already have the required quality — nothing to do.
-			if chunk != null && chunk.lod_tier <= desired_res:
+			if chunk != null && chunk.data.lod_tier <= desired_res:
 				continue
 			# Skip FAR chunks that are off-screen; they will be queued once the camera turns toward them.
 			if !is_visible && desired_res == GroundConstants.LOD_LEVELS.FAR:
@@ -127,12 +127,15 @@ func _apply_chunk_results() -> void:
 			i += 1
 			continue
 		pending_chunk_results.remove_at(i)
-		var existing: GroundChunk = parent.chunk_manager.chunks.get(chunk_d.loc, null)
-		if existing != null and existing.lod_tier <= chunk_d.lod_tier:
+		var existing_chunk: GroundChunk = parent.chunk_manager.chunks.get(chunk_d.loc, null)
+		if existing_chunk != null and existing_chunk.data.lod_tier <= chunk_d.lod_tier:
 			continue
 
-		var chunk: GroundChunk = parent.chunk_manager.create_chunk(chunk_d)
-		chunk.lod_tier = chunk_d.lod_tier
+		if parent.chunk_manager.chunks.has(chunk_d.loc):
+			parent.chunk_manager._remove_chunk(chunk_d.loc)
+		var chunk: GroundChunk = GroundUtils.build_chunk(chunk_d, parent.texture_manager.shader_material)
+		
+		chunk.data.lod_tier = chunk_d.lod_tier
 		chunk.are_decors_spawned = false
 		parent.get_node("Chunks").add_child(chunk.mesh_instance)
 		parent.chunk_manager.chunks[chunk_d.loc] = chunk
@@ -190,7 +193,7 @@ func _apply_decor_results() -> void:
 		var result: DecorThreadResult = pending_decor_results.pop_front()
 		var loc: Vector2i = result.loc
 		var chunk: GroundChunk = parent.chunk_manager.chunks.get(loc, null)
-		if !chunk || chunk.lod_tier != GroundConstants.LOD_LEVELS.CLOSE || chunk.are_decors_spawned:
+		if !chunk || chunk.data.lod_tier != GroundConstants.LOD_LEVELS.CLOSE || chunk.are_decors_spawned:
 			continue
 
 		var decor_d: DecorData = parent.decor_manager.decor_datas[result.decor_idx]
@@ -320,16 +323,16 @@ func _kick_decors_for_newly_visible_chunks(frustum: Array[Plane]) -> void:
 		already_queued[loc] = true
 
 	for chunk: GroundChunk in parent.chunk_manager.chunks.values():
-		if chunk.lod_tier != GroundConstants.LOD_LEVELS.CLOSE:
+		if chunk.data.lod_tier != GroundConstants.LOD_LEVELS.CLOSE:
 			continue
 		if chunk.are_decors_spawned:
 			continue
-		if already_queued.has(chunk.loc):
+		if already_queued.has(chunk.data.loc):
 			continue
-		if !is_chunk_visible(chunk.loc, frustum) and !_is_startup_chunk(chunk.loc):
+		if !is_chunk_visible(chunk.data.loc, frustum) and !_is_startup_chunk(chunk.data.loc):
 			continue
 		var idx := get_next_allowed_decor_in_chunk(0, chunk.data)
 		if idx >= 0:
-			_push_decor_request(DecorThreadRequest.new().init(chunk.loc, idx, {}))
+			_push_decor_request(DecorThreadRequest.new().init(chunk.data.loc, idx, {}))
 		else:
 			chunk.are_decors_spawned = true

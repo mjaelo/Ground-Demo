@@ -68,7 +68,7 @@ func is_ground_ready(player_loc: Vector2i) -> bool:
 			if !chunk:
 				is_ready = false
 				continue
-			if chunk.lod_tier > GroundConstants.LOD_LEVELS.CLOSE:
+			if chunk.data.lod_tier > GroundConstants.LOD_LEVELS.CLOSE:
 				is_ready = false
 				continue
 			spawned_chunks_nr += 1
