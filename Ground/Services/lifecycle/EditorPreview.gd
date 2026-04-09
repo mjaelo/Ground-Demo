@@ -27,9 +27,6 @@ func _editor_generate() -> void:
 	var noise := FastNoiseLite.new()
 	noise.frequency = GroundConstants.NOISE_FREQUENCY
 
-	# Set up biome manager
-	var biome_mgr := BiomeManager.new()
-
 	# Load textures and build shader material inline (avoids @tool dependency on GroundManager)
 	var loaded_textures: Array = GameUtils.load_from_json(
 		GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures")

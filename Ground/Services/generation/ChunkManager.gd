@@ -64,12 +64,12 @@ func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv
 		var world_x: float = float(x) * inv_res * chunk_size + base_x
 		for y in range(resolution):
 			var world_z: float = float(y) * inv_res * chunk_size + base_z
-			var biome_weights: Array[float] = parent.biome_manager._biome_weights(world_x, world_z)
+			var biome_scores: Array[float] = parent.biome_manager._compute_biome_scores(world_x, world_z)
+			var biome_weights: Array[float] = parent.biome_manager._weights_with_sharpness(biome_scores, GroundConstants.TEXTURE_BLEND_SHARPNESS)
 			cached_biome_weights[x * resolution + y] = biome_weights
 			for i in range(biome_count):
 				biome_weight_totals[i] += biome_weights[i]
-			# Height: sample via helper and convert to world Y (preserve existing behaviour)
-			var h_world: float =  parent.biome_manager.get_height_at(world_x, world_z)
+			var h_world: float = parent.biome_manager.get_height_at(world_x, world_z, biome_scores)
 			heightmap.set_pixel(x, y, Color(h_world, 0, 0, 1))
 	return heightmap
 			

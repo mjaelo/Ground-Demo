@@ -2,7 +2,7 @@
   "biomes": [
     {
       "name": "Plains",
-      "steepness_level": 30.0,
+      "steepness_level": 0.3,
       "biome_rarity": 1.25,
       "biome_size": 1.0,
       "flat_texture_id": 1,
@@ -12,7 +12,7 @@
     },
     {
       "name": "Mountain",
-      "steepness_level": 100.0,
+      "steepness_level": 1.0,
       "flat_texture_id": 1,
       "steep_texture_id": 0,
       "lod_texture_id": 0,
@@ -32,7 +32,7 @@
     },
     {
       "name": "Lake",
-      "steepness_level": 20.0,
+      "steepness_level": 0.2,
       "offset": -200.0,
       "flat_texture_id": 2,
       "steep_texture_id": 2,

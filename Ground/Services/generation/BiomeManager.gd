@@ -5,19 +5,6 @@ var biomes: Array[BiomeData] = []
 var size_noises: Array[FastNoiseLite] = []
 var height_noises: Array[FastNoiseLite] = []
 
-# TODO move Constants to GroundConstants
-# Controls how sharply biomes separate for texture/hill blending. Higher = sharper.
-var texture_blend_sharpness: float = 50.0
-var height_blend_sharpness: float = 5.0
-
-# Base seed; each biome offsets from this.
-const noise_seed: int = 7891
-const SIZE_BASE_FREQ := 0.00015
-const HEIGHT_BASE_FREQ := 0.0015
-const SIZE_EXPONENT := 0.5
-const HEIGHT_EXPONENT := 1.0
-const BIOME_HEIGHT_THRESHOLD := 0.01
-
 # ─ Initialization ─────────────────────────────────────────────────────
 func _init() -> void:
 	_load_biomes_from_json()
@@ -32,34 +19,30 @@ func _build_noises() -> void:
 	size_noises.clear()
 	height_noises.clear()
 	for i in range(biomes.size()):
-		var n := FastNoiseLite.new()
-		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		var s: float = pow(biomes[i].biome_size, SIZE_EXPONENT)
-		var freq := SIZE_BASE_FREQ / maxf(s, 0.0001)
-		n.frequency = freq
-		n.seed = noise_seed + i * 5137
-		size_noises.append(n)
+		var sn := FastNoiseLite.new()
+		sn.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		sn.frequency = GroundConstants.SIZE_BASE_FREQ / maxf(biomes[i].biome_size, 0.0001)
+		sn.seed = GroundConstants.NOISE_SEED + i * 5137
+		size_noises.append(sn)
 
 		var hn := FastNoiseLite.new()
 		hn.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		var s2: float = pow(biomes[i].steepness_level/100, HEIGHT_EXPONENT)
-		var freq2 := HEIGHT_BASE_FREQ / maxf(s2, 0.0001)
-		hn.frequency = freq2
-		hn.seed = noise_seed + i * 5137 + 99991
+		hn.frequency = GroundConstants.HEIGHT_BASE_FREQ / maxf(biomes[i].steepness_level, 0.0001)
+		hn.seed = GroundConstants.NOISE_SEED + i * 5137 + 99991
 		height_noises.append(hn)
 
 # ── Core API ──────────────────────────────────────────────────────────
-# Compute terrain height at a world position. 
-func get_height_at(world_x: float, world_z: float) -> float:
-	var biome_scores := _compute_biome_scores(world_x, world_z)
+# Compute terrain height at a world position. TODO save precomputed_scores from chunk generation to avoid redundant score calculations when computing height.
+func get_height_at(world_x: float, world_z: float, precomputed_scores: Array[float] = []) -> float:
+	var biome_scores: Array[float] = precomputed_scores if precomputed_scores.size() == biomes.size() else _compute_biome_scores(world_x, world_z)
 	var biome_count := biome_scores.size()
 	var minimal_offset: float = -INF
 	for i in range(biome_count):
-		if biomes[i].offset > minimal_offset && biome_scores[i] >= BIOME_HEIGHT_THRESHOLD:
+		if biomes[i].offset > minimal_offset && biome_scores[i] >= GroundConstants.BIOME_HEIGHT_THRESHOLD:
 			minimal_offset = biomes[i].offset
 	
 	# ── Step 1: terrain height ignoring biomes with offset < minimal_offset
-	var height_biome_weights_full: Array[float] = _weights_with_sharpness(biome_scores, height_blend_sharpness)
+	var height_biome_weights_full: Array[float] = _weights_with_sharpness(biome_scores, GroundConstants.HEIGHT_BLEND_SHARPNESS)
 	var high_biome_weights: Array[float] = []
 	high_biome_weights.resize(biome_count)
 	for i in range(biome_count):
@@ -71,7 +54,7 @@ func get_height_at(world_x: float, world_z: float) -> float:
 	var high_biomes_y: float = 0.0
 	for i in range(biome_count):
 		var high_biome_weight := high_biome_weights[i]
-		if high_biome_weight < BIOME_HEIGHT_THRESHOLD:
+		if high_biome_weight < GroundConstants.BIOME_HEIGHT_THRESHOLD:
 			continue
 		var high_biome_y := get_biome_y(world_x, world_z, i)
 		high_biomes_y += high_biome_weight * high_biome_y
@@ -104,13 +87,9 @@ func get_height_at(world_x: float, world_z: float) -> float:
 	return final_height
 
 func get_biome_y(world_x, world_z, i) -> float:
-	var range_y: float = GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN
 	var biome_d := biomes[i]
-	var offset_y: float = GroundConstants.HEIGHT_MIN + biome_d.offset
-	var steepness_percent: float = biome_d.steepness_level * 0.01
-	var max_hill_y: float = pow(steepness_percent, 2.0) * range_y * 0.6
 	var positive_noise_value: float = (height_noises[i].get_noise_2d(world_x, world_z) + 1.0) * 0.5
-	return offset_y + positive_noise_value * max_hill_y
+	return biome_d.offset + positive_noise_value * biome_d.max_hill_y
 
 # Returns the dominant BiomeData at a world position.
 func get_dominant_biome_at(world_x: float, world_z: float) -> BiomeData:
@@ -155,8 +134,7 @@ func _weights_with_sharpness(scores: Array[float], sharpness: float) -> Array[fl
 	return weights
 
 func _biome_weights(world_x: float, world_z: float) -> Array[float]:
-	return _weights_with_sharpness(_compute_biome_scores(world_x, world_z), texture_blend_sharpness)
-
+	return _weights_with_sharpness(_compute_biome_scores(world_x, world_z), GroundConstants.TEXTURE_BLEND_SHARPNESS)
 
 func get_biome_score_with_size(raw01: float, biome_rarity: float, biome_size: float) -> float:
 	var r: float = maxf(biome_rarity, 0.0001)

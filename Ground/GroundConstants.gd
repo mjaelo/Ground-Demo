@@ -14,6 +14,12 @@ const WATER_SURFACE_LEVEL: float = -1.0
 const BIOME_VALUES_PATH := "res://assets/biomes/biome_values.json"
 const STEEP_THRESHOLD: float = 30.0
 const STEEP_BLEND_RANGE: float = 10.0 # Degrees on each side of STEEP_THRESHOLD over which flat/steep textures blend.
+const TEXTURE_BLEND_SHARPNESS: float = 50.0
+const HEIGHT_BLEND_SHARPNESS: float = 5.0
+const NOISE_SEED: int = 7891
+const SIZE_BASE_FREQ := 0.00015
+const HEIGHT_BASE_FREQ := 0.0015
+const BIOME_HEIGHT_THRESHOLD := 0.001
 
 # ── DECORS ───────────────────────────────────────────────────────
 const DECOR_PATH: String = "res://assets/decors/"

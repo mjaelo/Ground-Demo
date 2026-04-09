@@ -74,27 +74,24 @@ func generate_transforms_for_decor(region_origin_m: Vector3, blocked: Dictionary
 				continue
 			var pos_x := x + origin.x
 			var pos_z := z + origin.z
-			if _is_decor_allowed_in_biome(decor_d, pos_x, pos_z):
-				if _can_place_decor(pos_x, pos_z, decor_d):
+			# Compute biome scores once and reuse for both checks — avoids 2x noise per cell.
+			var biome_scores: Array[float] = parent.biome_manager._compute_biome_scores(pos_x, pos_z)
+			if _is_decor_allowed_in_biome(decor_d, biome_scores):
+				if _can_place_decor(pos_x, pos_z, decor_d, biome_scores):
 					var rot_index: int = local_rng.randi() % 4
 					var rot_y: float = rot_index * PI * 0.5
 					_place_decor(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y)
 	return transforms_by_decor_name
 
-## Return a list of DecorData that are allowed in the biome covering the supplied chunk origin.
-func get_allowed_decors_for_biome(biome: BiomeData) -> Array[DecorData]:
-	var found: Array[DecorData] = []
-	for d:DecorData in decor_datas:
-		if d.decor_name in biome.allowed_decor_ids:
-			found.append(d)
-	return found
+func _is_decor_allowed_in_biome(decor: DecorData, biome_scores: Array[float]) -> bool:
+	var best_i := 0
+	for i in range(1, biome_scores.size()):
+		if biome_scores[i] > biome_scores[best_i]:
+			best_i = i
+	return decor.decor_name in parent.biome_manager.biomes[best_i].allowed_decor_ids
 
-func _is_decor_allowed_in_biome(decor: DecorData, wx: float, wz: float) -> bool:
-	var biome: BiomeData = parent.biome_manager.get_dominant_biome_at(wx, wz)
-	return decor.decor_name in biome.allowed_decor_ids
-
-func _can_place_decor(pos_x: float, pos_z: float, decor: DecorData) -> bool:
-	var center_h: float =  parent.biome_manager.get_height_at(pos_x, pos_z)
+func _can_place_decor(pos_x: float, pos_z: float, decor: DecorData, biome_scores: Array[float]) -> bool:
+	var center_h: float = parent.biome_manager.get_height_at(pos_x, pos_z, biome_scores)
 	if center_h < decor.min_height or center_h > decor.max_height:
 		return false
 	var center_slope: float = _slope_deg_at(pos_x, pos_z)
@@ -212,6 +209,7 @@ func get_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_lo
 		mm.set_instance_transform(i, transforms[i] * mesh_local_transform)
 	var mm_inst: MultiMeshInstance3D = MultiMeshInstance3D.new()
 	mm_inst.multimesh = mm
+	mm_inst.use_occlusion_culling = true
 	parent.get_node("Chunks").add_child(mm_inst)
 	if vis_range > 0.0:
 		_apply_visibility_range_recursive(mm_inst, vis_range)
@@ -230,8 +228,10 @@ func get_meshes_simple(transforms: Array[Transform3D], vis_range: float, scene: 
 
 func _apply_visibility_range_recursive(node: Node, range_end: float) -> void:
 	if node is GeometryInstance3D:
-		(node as GeometryInstance3D).visibility_range_end = range_end
-		(node as GeometryInstance3D).visibility_range_end_margin = range_end * 0.1
+		var gi := node as GeometryInstance3D
+		gi.visibility_range_end = range_end
+		gi.visibility_range_end_margin = range_end * 0.1
+		gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	for child in node.get_children():
 		_apply_visibility_range_recursive(child, range_end)
 

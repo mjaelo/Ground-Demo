@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends RefCounted
 class_name GroundChunk
 
 ## Scene-node wrapper for a terrain chunk. Holds the MeshInstance3D, optional collision body, and a reference to the underlying ChunkData.

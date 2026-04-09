@@ -2,7 +2,7 @@ extends Resource
 class_name BiomeData
 
 var biome_name: String = "" # Human-readable biome name
-var steepness_level: float = 2.0 # Controls terrain steepness. >0 -> hills above y=0, 0 -> flat, <0 -> inverted hills (holes) below y=0
+var steepness_level: float = 0.0 # Controls terrain steepness percent
 var offset: float = 0.0
 var flat_texture_id: int = 1    # Texture ID for flat ground (default Grass)
 var steep_texture_id: int = 0   # Texture ID for steep slopes (default Rock)
@@ -11,11 +11,12 @@ var biome_rarity: float = 1.0
 var allowed_decor_ids: Array = [] # List of string IDs/names of allowed DecorData for this biome
 var biome_size: float = 1.0
 var has_water: bool = false # Whether this biome contains water at y=0
+var max_hill_y: float = 0.0  # Precomputed: pow(steepness_level, 2.0) * (HEIGHT_MAX - HEIGHT_MIN) * 0.6
 
 static func from_dict(entry: Dictionary) -> BiomeData:
 	var b := BiomeData.new()
 	b.biome_name = str(entry.get("name", ""))
-	b.steepness_level = float(entry.get("steepness_level", 2.0))
+	b.steepness_level = float(entry.get("steepness_level", 0.0))
 	b.offset = float(entry.get("offset", 0.0))
 	b.flat_texture_id = int(entry.get("flat_texture_id", 1))
 	b.steep_texture_id = int(entry.get("steep_texture_id", 0))
@@ -24,4 +25,8 @@ static func from_dict(entry: Dictionary) -> BiomeData:
 	b.allowed_decor_ids = entry.get("allowed_decor_ids", [])
 	b.biome_size = float(entry.get("biome_size", 1.0))
 	b.has_water = bool(entry.get("has_water", false))
+	
+	# Precompute constants that get_biome_y uses on every call.
+	var range_y: float = GroundConstants.HEIGHT_MAX - GroundConstants.HEIGHT_MIN
+	b.max_hill_y = b.steepness_level * b.steepness_level * range_y * 0.6
 	return b
