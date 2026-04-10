@@ -24,9 +24,9 @@
     },
     {
       "name": "House",
-      "spawn_chance": 0.003,
+      "spawn_chance": 0.05,
       "max_slope": 15.0,
-      "mesh_size": [50, 50],
+      "mesh_size": [10,10],
       "visibility_range": 400.0,
       "priority": 10,
       "generator_script": "res://Ground/Services/lifecycle/HouseGenerator.gd"

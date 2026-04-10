@@ -1,15 +1,18 @@
 @tool
 extends Node
 
-@onready var ground: GroundManager = get_parent()
+@onready var parent: GroundManager = get_parent()
 
 func _ready():
-	await ground.ready
-	pass
+	parent = get_parent()
+	parent.init(null,null)
+	await parent.ready
+
 
 # ── Editor Preview ──────────────────────────────────────────────────────
 @export_group("Editor Preview")
-@export_range(1, 10) var editor_preview_radius: int = 3
+@export_range(1, 10) var editor_preview_radius: int = 1
+@export_enum("None", "Plains", "Mountain", "Village", "Lake") var editor_biome: int = 0
 @export var generate_in_editor: bool = false:
 	set(value):
 		generate_in_editor = value
@@ -22,7 +25,13 @@ func _ready():
 # ── Editor preview generation — delegates to ChunkManager ──────────
 func _editor_generate() -> void:
 	_editor_clear()
-
+	
+	if editor_biome > 0:
+		for i in parent.biome_manager.biomes.size():
+			var biome_d:BiomeData = parent.biome_manager.biomes[i]
+			if i != editor_biome -1:
+				biome_d.biome_size = 0
+	
 	# Set up noise
 	var noise := FastNoiseLite.new()
 	noise.frequency = GroundConstants.NOISE_FREQUENCY
@@ -37,10 +46,8 @@ func _editor_generate() -> void:
 		if tex:
 			tex_data.texture = tex
 
-	var mat := _build_editor_shader_material(loaded_textures)
-	var parent:= GroundManager.new()
-	var generator := ChunkManager.new()
-	generator.initialize(parent)
+	var generator := parent.chunk_manager
+	var mat: ShaderMaterial = parent.texture_manager.shader_material
 
 	var r: int = editor_preview_radius
 	var total: int = (2 * r + 1) * (2 * r + 1)
@@ -54,50 +61,19 @@ func _editor_generate() -> void:
 			$"../Chunks".add_child(chunk.mesh_instance)
 			chunk.mesh_instance.owner = get_tree().edited_scene_root
 
+			if parent.decor_manager:
+				var chunk_center := Vector3(loc.x * GroundConstants.CHUNK_SIZE + GroundConstants.CHUNK_SIZE * 0.5, 0, loc.y * GroundConstants.CHUNK_SIZE + GroundConstants.CHUNK_SIZE * 0.5)
+				var blocked := {}
+				for decor_d in parent.decor_manager.decor_datas:
+					var transforms := parent.decor_manager.generate_transforms_for_decor(chunk_center, blocked, decor_d)
+					if transforms.size() > 0:
+						parent.decor_manager.spawn_meshes(decor_d, transforms, loc)
+
 	print("[EditorGen] Done! %d chunks." % total)
-
-func _build_editor_shader_material(loaded_textures: Array) -> ShaderMaterial:
-	var shader: Shader = load(GroundConstants.TERRAIN_SHADER_PATH)
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
-
-	# Build Texture2DArray from raw source PNGs
-	var images: Array[Image] = []
-	var common_size := Vector2i.ZERO
-	for tex_data in loaded_textures:
-		var img := Image.new()
-		var path: String = tex_data.texture_path
-		var err := img.load(ProjectSettings.globalize_path(path))
-		if err != OK:
-			var sz := common_size if common_size != Vector2i.ZERO else Vector2i(256, 256)
-			img = Image.create_empty(sz.x, sz.y, false, Image.FORMAT_RGBA8)
-			img.fill(Color.MAGENTA)
-		if common_size == Vector2i.ZERO:
-			common_size = Vector2i(img.get_width(), img.get_height())
-		if Vector2i(img.get_width(), img.get_height()) != common_size:
-			img.resize(common_size.x, common_size.y)
-		if img.get_format() != Image.FORMAT_RGBA8:
-			img.convert(Image.FORMAT_RGBA8)
-		img.generate_mipmaps()
-		images.append(img)
-
-	if not images.is_empty():
-		var tex_arr := Texture2DArray.new()
-		if tex_arr.create_from_images(images) == OK:
-			mat.set_shader_parameter("terrain_textures", tex_arr)
-		else:
-			push_warning("[EditorGen] Texture2DArray creation failed")
-
-	mat.set_shader_parameter("texture_scale", GroundConstants.TEXTURE_SCALE)
-	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
-	mat.set_shader_parameter("texture_count", loaded_textures.size())
-	return mat
 
 func _editor_clear() -> void:
 	var to_remove: Array[Node] = []
 	for child in $"../Chunks".get_children():
-		if child.name.begins_with("EditorChunk_"):
-			to_remove.push_back(child)
-	for child in to_remove:
 		child.queue_free()
+	parent.init(null,null)
 	print("[EditorGen] Cleared %d preview chunks." % to_remove.size())

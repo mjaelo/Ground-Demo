@@ -1,6 +1,5 @@
 extends RefCounted
 class_name DecorManager
-# TODO house scenes are not rotated
 
 # asset_name (lowercase) -> PackedScene
 var decor_scenes: Dictionary = {}
@@ -114,14 +113,14 @@ func _is_slope_allowed(decor: DecorData, cx: float, cz: float, center_slope: flo
 	return true
 
 func _place_decor(decor: DecorData, transforms_by_name: Array[Transform3D], pos_x: float, pos_z: float, blocked: Dictionary, gx: int, gz: int, step: int, rot_y: float) -> void:
-	var best_h: float =  parent.biome_manager.get_height_at(pos_x, pos_z)
+	var best_h: float = parent.biome_manager.get_height_at(pos_x, pos_z)
 	var ms: Vector2i = decor.mesh_size
 	if ms.x > 0 or ms.y > 0:
 		var hx: float = ms.x * 0.5
 		var hz: float = ms.y * 0.5
 		for off in [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]:
 			var h: float =  parent.biome_manager.get_height_at(pos_x + off.x, pos_z + off.y)
-			if h < best_h:
+			if h > best_h:
 				best_h = h
 	var rot_basis := Basis(Vector3.UP, rot_y)
 	transforms_by_name.append(Transform3D(rot_basis, Vector3(pos_x, best_h, pos_z)))
@@ -145,21 +144,20 @@ func spawn_meshes(decor: DecorData, transforms: Array[Transform3D], loc: Vector2
 
 	# Use a stable int slot key derived from the asset name hash.
 	var name_hash: int = decor.decor_name.hash()
-	var slot_key := Vector3i(loc.x, loc.y, name_hash)
-	var nodes: Array = _scene_nodes.get(slot_key, [])
+	var decor_node_name := Vector3i(loc.x, loc.y, name_hash)
+	var nodes: Array = _scene_nodes.get(decor_node_name, [])
 	if transforms.size() == 0:
 		# Nothing to spawn
-		_scene_nodes[slot_key] = nodes
+		_scene_nodes[decor_node_name] = nodes
 		return
 
 	# Use cached multimesh eligibility computed at startup.
 	var decor_multimesh_data: Dictionary = _multimesh_cache.get(decor.decor_name.to_lower(), {})
-	
 	if decor_multimesh_data.can_multimesh:
 		nodes.append(get_meshes_multimesh(transforms, decor_multimesh_data.mesh_res, decor_multimesh_data.mesh_local_transform, decor.visibility_range))
 	else:
 		nodes.append_array(get_meshes_simple(transforms, decor.visibility_range, scene, decor.generator_script))
-	_scene_nodes[slot_key] = nodes
+	_scene_nodes[decor_node_name] = nodes
 
 func get_decor_multimesh_data(scene: PackedScene) -> Dictionary:
 	var can_multimesh: bool = true
@@ -218,12 +216,12 @@ func get_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_lo
 	
 func get_meshes_simple(transforms: Array[Transform3D], vis_range: float, scene: PackedScene, generator_script: GDScript = null) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
 	var nodes: Array[Node3D] = []
-	for t in transforms:
+	for t:Transform3D in transforms:
 		var node: Node3D = scene.instantiate()
 		node.transform = t
 		parent.get_node("Chunks").add_child(node)
 		if generator_script != null:
-			generator_script.call_generator(node)
+			generator_script.call_generator(node) # UNCOMMENT FOR IN EDITOR DECORS
 		if vis_range > 0.0:
 			_apply_visibility_range_recursive(node, vis_range)
 		nodes.append(node)

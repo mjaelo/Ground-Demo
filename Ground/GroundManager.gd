@@ -29,7 +29,8 @@ var is_ground_startup_done := false # TODO duplicate from main
 func init(_player: Player, _enemy: Enemy) -> void:
 	player = _player
 	enemy = _enemy
-	camera = _player.get_node("%Camera3D") as Camera3D
+	if player:
+		camera = _player.get_node("%Camera3D") as Camera3D
 	noise.frequency = GroundConstants.NOISE_FREQUENCY
 	
 	biome_manager = BiomeManager.new()

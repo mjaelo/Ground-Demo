@@ -1,11 +1,6 @@
 [gd_scene format=3 uid="uid://cknapliiqux2u"]
 
-[sub_resource type="BoxMesh" id="BoxMesh_qssya"]
-size = Vector3(50, 50, 50)
+[ext_resource type="Script" uid="uid://03t0knpl6cxr" path="res://Ground/Services/lifecycle/HouseGenerator.gd" id="1_qssya"]
 
 [node name="House" type="StaticBody3D" unique_id=913121615]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.2617846, 0)
-
-[node name="TemporaryMesh" type="MeshInstance3D" parent="." unique_id=2093446397]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 26.109318, 0)
-mesh = SubResource("BoxMesh_qssya")
+script = ExtResource("1_qssya")
