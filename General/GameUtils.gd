@@ -1,7 +1,7 @@
 extends Object
 class_name GameUtils
 
-# ── JSON Handling ─────────────────────────────────────────────────────────
+# JSON
 ## Loads a JSON file and returns its root dictionary, or null on error.
 static func load_json_dict(file_path: String) -> Dictionary:
 	if not FileAccess.file_exists(file_path):

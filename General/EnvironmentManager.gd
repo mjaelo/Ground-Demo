@@ -1,7 +1,6 @@
 extends Node3D
 class_name EnvironmentManager
 
-# --- Underwater visual signifier (simple) -----------------------------------
 const WATER_TINT: Color = Color(0.0, 0.18, 0.33,.5)
 const WATER_FOG_COLOR: Color = Color(0.011764706, 0.30588236, 0.5529412, 0.101960786)
 const WATER_FOG_DEPTH_END: float = 100.0

@@ -5,56 +5,54 @@ class_name ChunkManager
 var chunks: Dictionary = {} # Vector2i -> GroundChunk
 var parent: GroundManager
 
-const BIOME_WEIGHT_THRESHOLD: float = 0.01
-const prominence_threshold: float = 0.1 # biome must cover at least 10% of pixels
-
-
 func initialize( _parent: GroundManager) -> void:
 	parent = _parent
 
-# ── Chunk generation ───────────────────────────────────────────────────
+# GENERATION
 ## Returns a ChunkData populated with heightmap, splatmap, and dominant biomes.
-func generate_chunk_data(loc: Vector2i, lod_tier: int) -> ChunkData:
-	var data := ChunkData.new()
-	data.loc = loc
-	data.lod_tier = lod_tier
-	var resolution: int = GroundConstants.close_resolution if lod_tier == GroundConstants.LOD_LEVELS.CLOSE else GroundConstants.far_resolution
-	var chunk_size: int = GroundConstants.CHUNK_SIZE
-	var base_x: float = data.loc.x * chunk_size
-	var base_z: float = data.loc.y * chunk_size
+func get_chunk_thread_result(loc: Vector2i, lod_tier: int) -> ChunkThreadResult:
+	var chunk_data := ChunkData.new()
+	chunk_data.loc = loc
+	var resolution: int = GroundConstants.CLOSE_RESOLUTION if lod_tier == GroundConstants.LOD_LEVELS.CLOSE else GroundConstants.FAR_RESOLUTION
+	var base_x: float = chunk_data.loc.x * GroundConstants.CHUNK_SIZE
+	var base_z: float = chunk_data.loc.y * GroundConstants.CHUNK_SIZE
 	var inv_res: float = 1.0 / float(resolution - 1)
 
+	var heightmap_and_weight_totals := get_heightmap_and_biome_weights(resolution, inv_res, base_x, base_z)
+	var biome_weight_totals: Array = heightmap_and_weight_totals.biome_weight_totals
+	var cached_biome_weights: Array = heightmap_and_weight_totals.cached_biome_weights
+	
+	chunk_data.heightmap = heightmap_and_weight_totals.heightmap
+	chunk_data.splatmap = get_far_splatmap(cached_biome_weights, resolution) if lod_tier == GroundConstants.LOD_LEVELS.FAR else get_close_splatmap(cached_biome_weights, resolution, chunk_data.heightmap, inv_res, base_x, base_z)
+	chunk_data.prominent_biomes = get_prominent_biomes(biome_weight_totals)
+	chunk_data.has_water = chunk_data.prominent_biomes.any(func(bd: BiomeData) -> bool: return bd.has_water)
+	
+	return ChunkThreadResult.new().init(lod_tier, chunk_data)
+
+func get_prominent_biomes(biome_weight_totals: Array) -> Array[BiomeData]:
+	# --- Determine prominent biomes: biomes whose total weight exceeds a threshold ---
+	var total_weight: float = 0.0
+	for weight in biome_weight_totals:
+		total_weight += weight
+	var prominent_biomes:Array[BiomeData]= []
+	for i in range(parent.biome_manager.biomes.size()):
+		if biome_weight_totals[i] >= total_weight * GroundConstants.BIOME_PROMINENCE_TRESHOLD:
+			prominent_biomes.append(parent.biome_manager.biomes[i])
+	return prominent_biomes
+
+func get_heightmap_and_biome_weights(resolution: int, inv_res:float, base_x: float, base_z: float) ->Dictionary:
 	# Cache biome weights for each pixel
-	var biome_count: int = parent.biome_manager.biomes.size()
-	var biome_weight_totals: Array = []
-	biome_weight_totals.resize(biome_count)
-	for i in range(biome_count):
+	var biome_weight_totals: Array = [] # gets filled in get_heightmap
+	biome_weight_totals.resize(parent.biome_manager.biomes.size())
+	for i in range(parent.biome_manager.biomes.size()):
 		biome_weight_totals[i] = 0.0
 	var cached_biome_weights: Array = []
 	cached_biome_weights.resize(resolution * resolution)
+	
 	# --- Heightmap generation and biome weight accumulation ---
 	var heightmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RF)
-	heightmap = get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,biome_weight_totals)
-	# --- Determine prominent biomes: biomes whose total weight exceeds a threshold ---
-	var total_weight: float = 0.0
-	for w in biome_weight_totals:
-		total_weight += w
-	data.prominent_biomes = []
-	for i in range(biome_count):
-		var bd: BiomeData = parent.biome_manager.biomes[i]
-		if bd.has_water:
-			data.has_water = true
-		if biome_weight_totals[i] >= total_weight * prominence_threshold:
-			data.prominent_biomes.append(bd)
-	# Splatmap generation (RGBA = texture weights)
-	var splatmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RGBA8)
-	splatmap = get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,lod_tier)
-	# --- Assign generated images to chunk data ---
-	data.heightmap = heightmap
-	data.splatmap = splatmap
-	return data
-
-func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,biome_weight_totals) ->Image:
+	var chunk_size: int = GroundConstants.CHUNK_SIZE
+	var biome_count: int = parent.biome_manager.biomes.size()
 	for x in range(resolution):
 		var world_x: float = float(x) * inv_res * chunk_size + base_x
 		for y in range(resolution):
@@ -66,67 +64,69 @@ func get_heightmap(heightmap, cached_biome_weights, biome_count, resolution, inv
 				biome_weight_totals[i] += biome_weights[i]
 			var h_world: float = parent.biome_manager.get_height_at(world_x, world_z, biome_scores)
 			heightmap.set_pixel(x, y, Color(h_world, 0, 0, 1))
-	return heightmap
+	return {"heightmap": heightmap, "biome_weight_totals": biome_weight_totals, "cached_biome_weights": cached_biome_weights}
 			
-func get_splatmap(splatmap, heightmap, cached_biome_weights, biome_count, resolution, inv_res, chunk_size, base_x, base_z,lod_tier) ->Image:
-	if lod_tier == GroundConstants.LOD_LEVELS.FAR:
-		for x in range(resolution):
-			for y in range(resolution):
-				var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
-				var tex_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
-				for i in range(biome_count):
-					if biome_weights[i] < BIOME_WEIGHT_THRESHOLD:
-						continue
-					var tex_id: int = (parent.biome_manager.biomes[i] as BiomeData).lod_texture_id
-					if tex_id >= 0 and tex_id < 4:
-						tex_weights[tex_id] += biome_weights[i]
-				splatmap.set_pixel(x, y, _encode_weight_pixel(tex_weights))
-	else:
-		# For close/medium LOD, use slope to blend between flat/steep textures
-		var cell_size: float = float(chunk_size) / float(resolution - 1)
-		var slope_lo: float = GroundConstants.STEEP_THRESHOLD - GroundConstants.STEEP_BLEND_RANGE
-		var slope_hi: float = GroundConstants.STEEP_THRESHOLD + GroundConstants.STEEP_BLEND_RANGE
-		for x in range(resolution):
-			for y in range(resolution):
-				var height_center: float = heightmap.get_pixel(x, y).r
-				# For edge pixels, compute the neighbour height from noise
-				# instead of clamping to center (which would give slope = 0).
-				var height_right: float
-				var height_down: float
-				if x + 1 < resolution:
-					height_right = heightmap.get_pixel(x + 1, y).r
-				else:
-					var wx: float = float(x + 1) * inv_res * chunk_size + base_x
-					var wz: float = float(y) * inv_res * chunk_size + base_z
-					height_right = parent.biome_manager.get_height_at(wx, wz)
-				if y + 1 < resolution:
-					height_down = heightmap.get_pixel(x, y + 1).r
-				else:
-					var wx: float = float(x) * inv_res * chunk_size + base_x
-					var wz: float = float(y + 1) * inv_res * chunk_size + base_z
-					height_down = parent.biome_manager.get_height_at(wx, wz)
-				# Calculate slope in degrees (either fast gradient-based or original normal->acos)
-				var slope := rad_to_deg(acos(clampf(Vector3(-(height_right - height_center) / cell_size, 1.0, -(height_down - height_center) / cell_size).normalized().dot(Vector3.UP), -1.0, 1.0)))
-				# Smooth blend factor: 0 = fully flat texture, 1 = fully steep texture
-				var steep_factor: float = clampf((slope - slope_lo) / (slope_hi - slope_lo), 0.0, 1.0)
-				steep_factor = steep_factor * steep_factor * (3.0 - 2.0 * steep_factor) # smoothstep
-				var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
-				var tex_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
-				for i in range(biome_count):
-					var biome_weight := biome_weights[i]
-					if biome_weight < BIOME_WEIGHT_THRESHOLD:
-						continue
-					var biome_data: BiomeData = (parent.biome_manager.biomes[i] as BiomeData)
-					var flat_w: float = biome_weight * (1.0 - steep_factor)
-					var steep_w: float = biome_weight * steep_factor
-					if flat_w > 0.001 and biome_data.flat_texture_id >= 0 and biome_data.flat_texture_id < 4:
-						tex_weights[biome_data.flat_texture_id] += flat_w
-					if steep_w > 0.001 and biome_data.steep_texture_id >= 0 and biome_data.steep_texture_id < 4:
-						tex_weights[biome_data.steep_texture_id] += steep_w
-				splatmap.set_pixel(x, y, _encode_weight_pixel(tex_weights))
+func get_close_splatmap(cached_biome_weights: Array, resolution: int, heightmap:Image, inv_res:float, base_x: float, base_z: float) ->Image:
+	# For close LOD, use slope to blend between flat/steep textures
+	var splatmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RGBA8)
+	var chunk_size: int = GroundConstants.CHUNK_SIZE
+	var cell_size: float = float(chunk_size) / float(resolution - 1)
+	var slope_lo: float = GroundConstants.STEEP_THRESHOLD - GroundConstants.STEEP_BLEND_RANGE
+	var slope_hi: float = GroundConstants.STEEP_THRESHOLD + GroundConstants.STEEP_BLEND_RANGE
+	for x in range(resolution):
+		for y in range(resolution):
+			var height_center: float = heightmap.get_pixel(x, y).r
+			var height_right: float
+			var height_down: float
+			if x + 1 < resolution:
+				height_right = heightmap.get_pixel(x + 1, y).r
+			else:
+				var wx: float = float(x + 1) * inv_res * chunk_size + base_x
+				var wz: float = float(y) * inv_res * chunk_size + base_z
+				height_right = parent.biome_manager.get_height_at(wx, wz)
+			if y + 1 < resolution:
+				height_down = heightmap.get_pixel(x, y + 1).r
+			else:
+				var wx: float = float(x) * inv_res * chunk_size + base_x
+				var wz: float = float(y + 1) * inv_res * chunk_size + base_z
+				height_down = parent.biome_manager.get_height_at(wx, wz)
+			# Calculate slope in degrees (either fast gradient-based or original normal->acos)
+			var slope := rad_to_deg(acos(clampf(Vector3(-(height_right - height_center) / cell_size, 1.0, -(height_down - height_center) / cell_size).normalized().dot(Vector3.UP), -1.0, 1.0)))
+			# Smooth blend factor: 0 = fully flat texture, 1 = fully steep texture
+			var steep_factor: float = clampf((slope - slope_lo) / (slope_hi - slope_lo), 0.0, 1.0)
+			steep_factor = steep_factor * steep_factor * (3.0 - 2.0 * steep_factor) # smoothstep
+			var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
+			var texture_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
+			for i in range(parent.biome_manager.biomes.size()):
+				var biome_weight := biome_weights[i]
+				if biome_weight < GroundConstants.BIOME_WEIGHT_THRESHOLD:
+					continue
+				var biome_data: BiomeData = (parent.biome_manager.biomes[i] as BiomeData)
+				var flat_w: float = biome_weight * (1.0 - steep_factor)
+				var steep_w: float = biome_weight * steep_factor
+				if flat_w > 0.001 and biome_data.flat_texture_id >= 0 and biome_data.flat_texture_id < 4:
+					texture_weights[biome_data.flat_texture_id] += flat_w
+				if steep_w > 0.001 and biome_data.steep_texture_id >= 0 and biome_data.steep_texture_id < 4:
+					texture_weights[biome_data.steep_texture_id] += steep_w
+			splatmap.set_pixel(x, y, convert_weights_to_color(texture_weights))
 	return splatmap
 
-func _encode_weight_pixel(tex_weights: Array[float]) -> Color:
+func get_far_splatmap(cached_biome_weights: Array, resolution: int) ->Image:
+	var splatmap: Image = Image.create_empty(resolution, resolution, false, Image.FORMAT_RGBA8)
+	for x in range(resolution):
+		for y in range(resolution):
+			var biome_weights: Array[float] = cached_biome_weights[x * resolution + y]
+			var tex_weights: Array[float] = [0.0, 0.0, 0.0, 0.0]
+			for i in range(parent.biome_manager.biomes.size()):
+				if biome_weights[i] < GroundConstants.BIOME_WEIGHT_THRESHOLD:
+					continue
+				var tex_id: int = (parent.biome_manager.biomes[i] as BiomeData).lod_texture_id
+				if tex_id >= 0 and tex_id < 4:
+					tex_weights[tex_id] += biome_weights[i]
+			splatmap.set_pixel(x, y, convert_weights_to_color(tex_weights))
+	return splatmap
+
+func convert_weights_to_color(tex_weights: Array[float]) -> Color:
 	var total: float = tex_weights[0] + tex_weights[1] + tex_weights[2] + tex_weights[3]
 	if total <= 0.0:
 		# Fallback: 100% texture 1 (Grass)
@@ -139,19 +139,20 @@ func _encode_weight_pixel(tex_weights: Array[float]) -> Color:
 		tex_weights[3] * inv
 	)
 
-# ── Chunk management ───────────────────────────────────────────────────
+# MANAGEMENT 
 func update_distant_chunks(player_loc: Vector2i) -> void:
 	# Remove chunks beyond far_radius that are also out of the frustum.
-	var remove_r: float = GroundConstants.far_radius + GroundConstants.REMOVE_CHUNKS_MARGIN
+	var remove_r: float = GroundConstants.FAR_RADIUS + GroundConstants.REMOVE_CHUNKS_MARGIN
 	for chunk: GroundChunk in chunks.values():
 		var loc := chunk.data.loc
 		var dist: float = loc.distance_to(player_loc)
 		if dist > remove_r:
 			_remove_chunk(loc)
-		if chunk.data.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
-				and loc.distance_to(player_loc) > GroundConstants.close_radius + 1 \
+		if chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
+				and loc.distance_to(player_loc) > GroundConstants.CLOSE_RADIUS + 1 \
 				and chunk.are_decors_spawned and parent.decor_manager:
-			parent.decor_manager.clear_decors(loc)
+			parent.decor_manager.clear_decors(loc, chunk.decor_nodes)
+			chunk.decor_nodes = []
 			chunk.are_decors_spawned = false
 
 func _remove_chunk(loc: Vector2i) -> void:
@@ -159,10 +160,14 @@ func _remove_chunk(loc: Vector2i) -> void:
 		return
 	var chunk: GroundChunk = chunks[loc]
 	chunks.erase(loc)
-	chunk.destroy()
-	parent.decor_manager.clear_decors(loc)
+	if is_instance_valid(chunk.mesh_instance):
+		chunk.mesh_instance.queue_free()
+	parent.decor_manager.clear_decors(loc, chunk.decor_nodes)
+	chunk.decor_nodes = []
+	chunk.mesh_instance = null
+	chunk.collision_body = null
 
-# ── Terrain sampling ─────────────────────────────────────────────────
+# SAMPLING
 func sample_normal(world_x: float, world_z: float) -> Vector3:
 	var world_pos := Vector3(world_x, 0 , world_z)
 	var loc := GroundUtils.world_pos_to_chunk_loc(world_pos)

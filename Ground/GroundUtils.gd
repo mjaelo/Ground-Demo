@@ -1,8 +1,8 @@
 extends Object
 class_name GroundUtils
 
-# ── Ground Utility ───────────────────────────────────────────────────────────
-static func world_pos_to_chunk_loc(pos: Vector3) -> Vector2i: # TODO can take just x and z
+# GENERAL GROUND UTILS
+static func world_pos_to_chunk_loc(pos: Vector3) -> Vector2i:
 	return Vector2i(floori(pos.x / float(GroundConstants.CHUNK_SIZE)), floori(pos.z / float(GroundConstants.CHUNK_SIZE)))
 
 static func height_from_heightmap(img: Image, world_x:float, world_z:float, loc: Vector2i) -> float:
@@ -13,10 +13,9 @@ static func height_from_heightmap(img: Image, world_x:float, world_z:float, loc:
 	var py: int = clampi(int(lz / float(GroundConstants.CHUNK_SIZE) * (res - 1)), 0, res - 1)
 	return img.get_pixel(px, py).r
 
-# Chunk Utils
-## Build the chunk node hierarchy from a ChunkData.
-## Call on the main thread after generating data on a worker.
-static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial) -> GroundChunk:
+# CHUNK UTILS
+static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial, lod_tier: int) -> GroundChunk:
+	## Build GroundChunk from a ChunkData.
 	var chunk := GroundChunk.new()
 	chunk.data = chunk_d
 
@@ -41,7 +40,7 @@ static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial) -> 
 		var wmi := get_water_mi()
 		mi.add_child(wmi)
 
-	if chunk_d.lod_tier == GroundConstants.LOD_LEVELS.CLOSE:
+	if lod_tier == GroundConstants.LOD_LEVELS.CLOSE:
 		var body := get_collision(chunk_d, res)
 		mi.add_child(body)
 		chunk.collision_body = body
@@ -61,19 +60,14 @@ static func get_collision(chunk_d:ChunkData, res: int ) -> StaticBody3D:
 	return body
 
 static func get_water_mi() ->MeshInstance3D:
-	# Create a lightweight MeshInstance referencing shared mesh & material
 	var wmi := MeshInstance3D.new()
-	wmi.mesh = GroundConstants._shared_water_mesh
-	wmi.material_override = GroundConstants._shared_water_material
-	# Rotate the quad to lie flat on XZ and center it in the chunk
+	wmi.mesh = GroundConstants.WATER_MESH
+	wmi.material_override = GroundConstants.WATER_MATERIAL
 	wmi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	wmi.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, GroundConstants.WATER_SURFACE_LEVEL, GroundConstants.CHUNK_SIZE * 0.5)
 	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return wmi
 
-## Build a HeightMapShape3D from a heightmap image.
-## HeightMapShape3D is far more nav-friendly than a trimesh — Godot's nav parser
-## handles it without flooding the rasterizer with thousands of tiny edges.
 static func _build_heightmap_shape(img: Image, res: int) -> HeightMapShape3D:
 	var shape := HeightMapShape3D.new()
 	shape.map_width = res
@@ -86,7 +80,6 @@ static func _build_heightmap_shape(img: Image, res: int) -> HeightMapShape3D:
 	shape.map_data = heights
 	return shape
 
-# ── Mesh construction ─────────────────────────────────────────────────
 ## Builds an indexed mesh with smooth normals via generate_normals().
 static func _build_mesh(img: Image, res: int) -> ArrayMesh:
 	var st := SurfaceTool.new()

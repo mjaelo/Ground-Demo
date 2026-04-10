@@ -4,7 +4,6 @@ class_name DecorManager
 # asset_name (lowercase) -> PackedScene
 var decor_scenes: Dictionary = {}
 var decor_datas: Array[DecorData] = []
-var _scene_nodes: Dictionary = {} # TODO refactor. idk what that is
 # multimesh is only done, when  decor scene is a single mesh (without script), with normal scale and origin
 var _multimesh_cache: Dictionary = {}  # decor_name (lowercase) -> {can_multimesh, mesh_res, mesh_local_transform}
 var parent: GroundManager
@@ -13,7 +12,6 @@ func initialize(_parent: GroundManager) -> void:
 	parent = _parent
 
 func _init() -> void:
-	#	load_decor_scenes
 	var dir := DirAccess.open(GroundConstants.DECOR_PATH)
 	if dir == null:
 		push_error("Cannot open decor directory: %s" % GroundConstants.DECOR_PATH)
@@ -136,28 +134,18 @@ func _slope_deg_at(wx: float, wz: float) -> float:
 	var ny: float = clamp(n.dot(Vector3.UP), -1.0, 1.0)
 	return rad_to_deg(atan2(sqrt(max(0.0, 1.0 - ny * ny)), ny))
 
-func spawn_meshes(decor: DecorData, transforms: Array[Transform3D], loc: Vector2i) -> void:
+func get_decor_meshes(decor: DecorData, transforms: Array[Transform3D]) -> Array[Node3D]:
 	var scene: PackedScene = decor_scenes.get(decor.decor_name.to_lower(), null)
-	if not scene:
-		push_warning("spawn_meshes: no scene loaded for '%s'" % decor)
-		return
+	if !scene || transforms.size() == 0:
+		return []
 
-	# Use a stable int slot key derived from the asset name hash.
-	var name_hash: int = decor.decor_name.hash()
-	var decor_node_name := Vector3i(loc.x, loc.y, name_hash)
-	var nodes: Array = _scene_nodes.get(decor_node_name, [])
-	if transforms.size() == 0:
-		# Nothing to spawn
-		_scene_nodes[decor_node_name] = nodes
-		return
-
-	# Use cached multimesh eligibility computed at startup.
+	var nodes: Array[Node3D] = []
 	var decor_multimesh_data: Dictionary = _multimesh_cache.get(decor.decor_name.to_lower(), {})
 	if decor_multimesh_data.can_multimesh:
-		nodes.append(get_meshes_multimesh(transforms, decor_multimesh_data.mesh_res, decor_multimesh_data.mesh_local_transform, decor.visibility_range))
+		nodes.append(add_meshes_multimesh(transforms, decor_multimesh_data.mesh_res, decor_multimesh_data.mesh_local_transform, decor.visibility_range))
 	else:
-		nodes.append_array(get_meshes_simple(transforms, decor.visibility_range, scene, decor.generator_script))
-	_scene_nodes[decor_node_name] = nodes
+		nodes.append_array(add_meshes_simple(transforms, decor.visibility_range, scene, decor.generator_script))
+	return nodes
 
 func get_decor_multimesh_data(scene: PackedScene) -> Dictionary:
 	var can_multimesh: bool = true
@@ -192,13 +180,13 @@ func get_decor_multimesh_data(scene: PackedScene) -> Dictionary:
 	if is_instance_valid(temp_inst):
 		temp_inst.free()
 		
-	return {
+	return { # TODO change to object type?
 		"can_multimesh": can_multimesh,
 		"mesh_res": mesh_res,
 		"mesh_local_transform": mesh_local_transform
 	}
 		
-func get_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_local_transform: Transform3D, vis_range: float) -> MultiMeshInstance3D: # Build a MultiMesh and a single MultiMeshInstance3D for this chunk+asset
+func add_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_local_transform: Transform3D, vis_range: float) -> MultiMeshInstance3D: # Build a MultiMesh and a single MultiMeshInstance3D for this chunk+asset
 	var mm: MultiMesh = MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.instance_count = transforms.size()
@@ -209,21 +197,19 @@ func get_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_lo
 	var mm_inst: MultiMeshInstance3D = MultiMeshInstance3D.new()
 	mm_inst.multimesh = mm
 	mm_inst.use_occlusion_culling = true
-	parent.get_node("Chunks").add_child(mm_inst)
 	if vis_range > 0.0:
 		_apply_visibility_range_recursive(mm_inst, vis_range)
 	return mm_inst
 	
-func get_meshes_simple(transforms: Array[Transform3D], vis_range: float, scene: PackedScene, generator_script: GDScript = null) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
+func add_meshes_simple(transforms: Array[Transform3D], vis_range: float, scene: PackedScene, generator_script: GDScript = null) ->Array[Node3D]: # instantiate full scenes for each transform (used for houses, colliders, scripts)
 	var nodes: Array[Node3D] = []
 	for t:Transform3D in transforms:
 		var node: Node3D = scene.instantiate()
 		node.transform = t
-		parent.get_node("Chunks").add_child(node)
 		if generator_script != null:
-			generator_script.call_generator(node) # UNCOMMENT FOR IN EDITOR DECORS
-		if vis_range > 0.0:
-			_apply_visibility_range_recursive(node, vis_range)
+			generator_script.call_generator(node) 
+		if vis_range > 0.0: 											# COMMENT FOR IN EDITOR DECORS
+			_apply_visibility_range_recursive(node, vis_range) # COMMENT FOR IN EDITOR DECORS
 		nodes.append(node)
 	return nodes
 
@@ -236,15 +222,10 @@ func _apply_visibility_range_recursive(node: Node, range_end: float) -> void:
 	for child in node.get_children():
 		_apply_visibility_range_recursive(child, range_end)
 
-func clear_decors(loc: Vector2i) -> void:
-	var to_erase: Array = []
-	for slot_key in _scene_nodes.keys():
-		if slot_key is Vector3i and slot_key.x == loc.x and slot_key.y == loc.y:
-			to_erase.append(slot_key)
-	for slot_key in to_erase:
-		for node in _scene_nodes[slot_key]:
-			if is_instance_valid(node):
-				node.queue_free()
-		_scene_nodes.erase(slot_key)
-		if parent.ground_thread_manager and parent.ground_thread_manager.decor_threads.has(loc):
-			parent.ground_thread_manager.decor_threads.erase(loc)
+func clear_decors(loc: Vector2i, decor_nodes: Array[Node3D]) -> void:
+	for node in decor_nodes:
+		if is_instance_valid(node):
+			node.queue_free()
+	
+	if parent.ground_thread_manager and parent.ground_thread_manager.decor_threads.has(loc):
+		parent.ground_thread_manager.decor_threads.erase(loc)

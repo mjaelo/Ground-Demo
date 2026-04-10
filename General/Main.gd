@@ -1,7 +1,7 @@
 extends Node
 class_name Main
 
-# ── Module references ──────────────────────────────────────────────────
+#  Module references 
 @onready var ground: GroundManager = $Ground
 @onready var ui: UiManager = $UI
 @onready var mob: MobManager = $Mob

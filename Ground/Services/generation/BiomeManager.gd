@@ -5,7 +5,7 @@ var biomes: Array[BiomeData] = []
 var size_noises: Array[FastNoiseLite] = []
 var height_noises: Array[FastNoiseLite] = []
 
-# ─ Initialization ─────────────────────────────────────────────────────
+# INITIALIZATION 
 func _init() -> void:
 	_load_biomes_from_json()
 	_build_noises()
@@ -31,8 +31,8 @@ func _build_noises() -> void:
 		hn.seed = GroundConstants.NOISE_SEED + i * 5137 + 99991
 		height_noises.append(hn)
 
-# ── Core API ──────────────────────────────────────────────────────────
-# Compute terrain height at a world position. TODO save precomputed_scores from chunk generation to avoid redundant score calculations when computing height.
+#  Core API 
+# Compute terrain height at a world position.
 func get_height_at(world_x: float, world_z: float, precomputed_scores: Array[float] = []) -> float:
 	var biome_scores: Array[float] = precomputed_scores if precomputed_scores.size() == biomes.size() else _compute_biome_scores(world_x, world_z)
 	var biome_count := biome_scores.size()
@@ -41,7 +41,7 @@ func get_height_at(world_x: float, world_z: float, precomputed_scores: Array[flo
 		if biomes[i].offset > minimal_offset && biome_scores[i] >= GroundConstants.BIOME_HEIGHT_THRESHOLD:
 			minimal_offset = biomes[i].offset
 	
-	# ── Step 1: terrain height ignoring biomes with offset < minimal_offset
+	#  Step 1: terrain height ignoring biomes with offset < minimal_offset
 	var height_biome_weights_full: Array[float] = _weights_with_sharpness(biome_scores, GroundConstants.HEIGHT_BLEND_SHARPNESS)
 	var high_biome_weights: Array[float] = []
 	high_biome_weights.resize(biome_count)
@@ -59,7 +59,7 @@ func get_height_at(world_x: float, world_z: float, precomputed_scores: Array[flo
 		var high_biome_y := get_biome_y(world_x, world_z, i)
 		high_biomes_y += high_biome_weight * high_biome_y
 
-	# ── Step 2: downward pull ──────────────────────
+	#  Step 2: downward pull 
 	# Determine dominant high biome weight using the elevated-only weights
 	var dominant_high_biome_weight: float = 0.0
 	for i in range(biome_count):
@@ -100,7 +100,7 @@ func get_dominant_biome_at(world_x: float, world_z: float) -> BiomeData:
 			best_i = i
 	return biomes[best_i]
 
-# --- Internal helpers -------------------------------------------------
+# Internal helpers-
 
 # Compute raw per-biome scores (before sharpening/normalisation).
 func _compute_biome_scores(world_x: float, world_z: float) -> Array[float]:

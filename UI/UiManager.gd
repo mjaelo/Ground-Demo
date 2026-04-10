@@ -62,7 +62,7 @@ func activate() -> void:
 	loading_node.visible = false
 	info_node.visible = true
 
-# ── Input ──────────────────────────────────────────────────────────────
+#  Input 
 func _unhandled_key_input(p_event: InputEvent) -> void:
 	if p_event is InputEventKey and p_event.pressed:
 		match p_event.keycode:

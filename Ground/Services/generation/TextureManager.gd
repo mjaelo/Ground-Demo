@@ -5,29 +5,15 @@ var loaded_textures:Array[TextureData]
 var shader_material: ShaderMaterial = null
 
 func _init() -> void:
-	load_textures()
+	loaded_textures.append_array(GameUtils.load_from_json(GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures"))
 	build_shader_material()
-
-func load_textures():
-	var loaded_tex := GameUtils.load_from_json(GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures")
-	for tex_data:TextureData in loaded_tex:
-		if tex_data.texture_name.is_empty() or tex_data.texture_path.is_empty():
-			push_warning("GroundManager: texture entry missing name or path")
-			continue
-		var tex = load(tex_data.texture_path)
-		if tex:
-			tex_data.texture = tex
-			loaded_textures.append(tex_data)
-		else:
-			push_warning("GroundManager: Could not load texture at %s" % tex_data.texture_path)
 
 func build_shader_material() -> void:
 	var shader: Shader = load(GroundConstants.TERRAIN_SHADER_PATH)
 	shader_material = ShaderMaterial.new()
 	shader_material.shader = shader
 
-	# Build a Texture2DArray from all loaded textures so the shader can
-	# index any texture dynamically without a fixed number of uniforms.
+	# Build a Texture2DArray from all loaded textures so the shader can index any texture dynamically without a fixed number of uniforms.
 	var tex_array := build_texture_array()
 	if tex_array:
 		shader_material.set_shader_parameter("terrain_textures", tex_array)
