@@ -36,17 +36,6 @@ const FAR_RADIUS: int = 30
 const CLOSE_RESOLUTION: int = 48
 const FAR_RESOLUTION: int = 6
 const REMOVE_CHUNKS_MARGIN: int = 3
-static var WATER_MESH: QuadMesh = (func ()->QuadMesh: 
-	var water_mesh := QuadMesh.new() 
-	water_mesh.size = Vector2(CHUNK_SIZE, CHUNK_SIZE) 
-	return water_mesh).call()
-static var WATER_MATERIAL: StandardMaterial3D = (func () -> StandardMaterial3D:
-	var water_material := StandardMaterial3D.new()
-	water_material.albedo_color = Color(0.0, 0.35, 0.65, 0.25)
-	water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	water_material.roughness = 0.2
-	water_material.metallic = 0.0
-	return water_material).call()
 
 # THREADING
 const STARTUP_DECOR_THREADS: int = 16
@@ -57,7 +46,14 @@ const STARTUP_LOD_PER_FRAME: int = 100
 const STEADY_CHUNK_THREADS: int = 4
 const STEADY_DECOR_THREADS: int = 2
 const STEADY_CHUNKS_PER_FRAME: int = 4
-const STEADY_LOD_PER_FRAME: int = 30
+const STEADY_LOD_PER_FRAME: int = 4  # Keep low: each FAR apply builds a mesh + uploads a texture on the main thread.
+
+const CHUNK_CLEAN_INTERVAL: float = 0.5  # Only scan for chunk removal twice per second.
+# VISIBILITY
+## Maximum render distance for FAR-LOD chunks (GPU-level cull).  Set to 0 to disable.
+const FAR_LOD_VISIBILITY_RANGE: float = float(FAR_RADIUS) * float(CHUNK_SIZE) * 1.05
+## Interval (seconds) between full chunk-request scans when the player hasn't moved chunks.
+const CHUNK_SCAN_INTERVAL: float = 0.25
 
 # TEXTURE
 const TERRAIN_SHADER_PATH := "res://assets/terrain_blend.gdshader"

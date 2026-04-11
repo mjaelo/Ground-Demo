@@ -39,7 +39,7 @@ func loaded_tick(player_chunk_loc: Vector2i) -> void:
 			Mouse toggle: Escape / F12
 			"""
 	var biome_name := ground.biome_manager.get_dominant_biome_at(player.position.x, player.position.z).biome_name
-	var decor_spawned:bool = ground.chunk_manager.chunks.get(player_chunk_loc).are_decors_spawned
+	var decor_spawned:bool = ground.chunk_manager.chunks.has(player_chunk_loc) && ground.chunk_manager.chunks.get(player_chunk_loc).are_decors_spawned
 	loaded_text += """
 			Chunk
 			Biome: %s

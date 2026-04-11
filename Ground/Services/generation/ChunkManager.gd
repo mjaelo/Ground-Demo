@@ -3,6 +3,7 @@ class_name ChunkManager
 
 ## Generates heightmap, splatmap and biome data for terrain chunks.
 var chunks: Dictionary = {} # Vector2i -> GroundChunk
+var saved_chunk_data: Dictionary = {} # Vector2i -> ChunkData
 var parent: GroundManager
 
 func initialize( _parent: GroundManager) -> void:
@@ -24,21 +25,21 @@ func get_chunk_thread_result(loc: Vector2i, lod_tier: int) -> ChunkThreadResult:
 	
 	chunk_data.heightmap = heightmap_and_weight_totals.heightmap
 	chunk_data.splatmap = get_far_splatmap(cached_biome_weights, resolution) if lod_tier == GroundConstants.LOD_LEVELS.FAR else get_close_splatmap(cached_biome_weights, resolution, chunk_data.heightmap, inv_res, base_x, base_z)
-	chunk_data.prominent_biomes = get_prominent_biomes(biome_weight_totals)
-	chunk_data.has_water = chunk_data.prominent_biomes.any(func(bd: BiomeData) -> bool: return bd.has_water)
+	chunk_data.prominent_biome_ids = get_prominent_biomes_ids(biome_weight_totals)
+	chunk_data.has_water = chunk_data.prominent_biome_ids.any(func(id: int) -> bool: return parent.biome_manager.biomes[id].has_water)
 	
 	return ChunkThreadResult.new().init(lod_tier, chunk_data)
 
-func get_prominent_biomes(biome_weight_totals: Array) -> Array[BiomeData]:
+func get_prominent_biomes_ids(biome_weight_totals: Array) -> Array[int]:
 	# --- Determine prominent biomes: biomes whose total weight exceeds a threshold ---
 	var total_weight: float = 0.0
 	for weight in biome_weight_totals:
 		total_weight += weight
-	var prominent_biomes:Array[BiomeData]= []
+	var prominent_biomes_ids:Array[int]= []
 	for i in range(parent.biome_manager.biomes.size()):
 		if biome_weight_totals[i] >= total_weight * GroundConstants.BIOME_PROMINENCE_TRESHOLD:
-			prominent_biomes.append(parent.biome_manager.biomes[i])
-	return prominent_biomes
+			prominent_biomes_ids.append(i)
+	return prominent_biomes_ids
 
 func get_heightmap_and_biome_weights(resolution: int, inv_res:float, base_x: float, base_z: float) ->Dictionary:
 	# Cache biome weights for each pixel
@@ -148,8 +149,8 @@ func update_distant_chunks(player_loc: Vector2i) -> void:
 		var dist: float = loc.distance_to(player_loc)
 		if dist > remove_r:
 			_remove_chunk(loc)
-		if chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
-				and loc.distance_to(player_loc) > GroundConstants.CLOSE_RADIUS + 1 \
+		elif chunk.lod_tier == GroundConstants.LOD_LEVELS.CLOSE \
+				and dist > GroundConstants.CLOSE_RADIUS + 1 \
 				and chunk.are_decors_spawned and parent.decor_manager:
 			parent.decor_manager.clear_decors(loc, chunk.decor_nodes)
 			chunk.decor_nodes = []

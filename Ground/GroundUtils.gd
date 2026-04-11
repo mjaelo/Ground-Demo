@@ -1,6 +1,19 @@
 extends Object
 class_name GroundUtils
 
+# materials
+static var WATER_MESH: QuadMesh = (func ()->QuadMesh: 
+	var water_mesh := QuadMesh.new() 
+	water_mesh.size = Vector2(GroundConstants.CHUNK_SIZE, GroundConstants.CHUNK_SIZE) 
+	return water_mesh).call()
+static var WATER_MATERIAL: StandardMaterial3D = (func () -> StandardMaterial3D:
+	var water_material := StandardMaterial3D.new()
+	water_material.albedo_color = Color(0.0, 0.35, 0.65, 0.25)
+	water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water_material.roughness = 0.2
+	water_material.metallic = 0.0
+	return water_material).call()
+
 # GENERAL GROUND UTILS
 static func world_pos_to_chunk_loc(pos: Vector3) -> Vector2i:
 	return Vector2i(floori(pos.x / float(GroundConstants.CHUNK_SIZE)), floori(pos.z / float(GroundConstants.CHUNK_SIZE)))
@@ -34,6 +47,12 @@ static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial, lod
 	mi.material_override = mat
 	mi.position = Vector3(chunk_d.loc.x * GroundConstants.CHUNK_SIZE, 0, chunk_d.loc.y * GroundConstants.CHUNK_SIZE)
 
+	# GPU-level distance cull for FAR-LOD tiles so they are not rendered beyond the streamed radius.
+	if lod_tier == GroundConstants.LOD_LEVELS.FAR and GroundConstants.FAR_LOD_VISIBILITY_RANGE > 0.0:
+		mi.visibility_range_end = GroundConstants.FAR_LOD_VISIBILITY_RANGE
+		mi.visibility_range_end_margin = GroundConstants.CHUNK_SIZE * 2.0
+		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+
 	chunk.mesh_instance = mi
 
 	if chunk_d.has_water:
@@ -61,8 +80,8 @@ static func get_collision(chunk_d:ChunkData, res: int ) -> StaticBody3D:
 
 static func get_water_mi() ->MeshInstance3D:
 	var wmi := MeshInstance3D.new()
-	wmi.mesh = GroundConstants.WATER_MESH
-	wmi.material_override = GroundConstants.WATER_MATERIAL
+	wmi.mesh = WATER_MESH
+	wmi.material_override = WATER_MATERIAL
 	wmi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	wmi.position = Vector3(GroundConstants.CHUNK_SIZE * 0.5, GroundConstants.WATER_SURFACE_LEVEL, GroundConstants.CHUNK_SIZE * 0.5)
 	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

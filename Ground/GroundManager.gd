@@ -20,6 +20,8 @@ var decor_chunks_nr := 0
 var total_chunk_nr := 0
 var is_ground_startup_done := false
 
+var _chunk_clean_timer: float = 0.0
+
 func init(_player: Player, _enemy: Enemy) -> void:
 	player = _player
 	enemy = _enemy
@@ -38,13 +40,19 @@ func init(_player: Player, _enemy: Enemy) -> void:
 	chunk_manager = ChunkManager.new()
 	chunk_manager.initialize(self)
 
-func unloaded_tick(player_chunk_loc: Vector2i) -> void:
-	ground_thread_manager.handle_threads(player_chunk_loc)
-	chunk_manager.update_distant_chunks(player_chunk_loc)
+func unloaded_tick(player_chunk_loc: Vector2i, delta: float = 0.016) -> void:
+	ground_thread_manager.handle_threads(player_chunk_loc, delta)
+	_chunk_clean_timer += delta
+	if _chunk_clean_timer >= GroundConstants.CHUNK_CLEAN_INTERVAL:
+		_chunk_clean_timer = 0.0
+		chunk_manager.update_distant_chunks(player_chunk_loc)
 
-func loaded_tick(player_chunk_loc: Vector2i) -> void:
-	ground_thread_manager.handle_threads(player_chunk_loc)
-	chunk_manager.update_distant_chunks(player_chunk_loc)
+func loaded_tick(player_chunk_loc: Vector2i, delta: float = 0.016) -> void:
+	ground_thread_manager.handle_threads(player_chunk_loc, delta)
+	_chunk_clean_timer += delta
+	if _chunk_clean_timer >= GroundConstants.CHUNK_CLEAN_INTERVAL:
+		_chunk_clean_timer = 0.0
+		chunk_manager.update_distant_chunks(player_chunk_loc)
 	var chunk: GroundChunk = chunk_manager.chunks.get(player_chunk_loc, null)
 	boundary_detector.update(chunk)
 

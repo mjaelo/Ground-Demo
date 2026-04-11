@@ -55,14 +55,15 @@ func _editor_generate() -> void:
 
 			if parent.decor_manager:
 				var chunk_center := Vector3(loc.x * GroundConstants.CHUNK_SIZE + GroundConstants.CHUNK_SIZE * 0.5, 0, loc.y * GroundConstants.CHUNK_SIZE + GroundConstants.CHUNK_SIZE * 0.5)
-				var blocked := {}
-				for decor_d in parent.decor_manager.decor_datas:
-					var transforms := parent.decor_manager.generate_transforms_for_decor(chunk_center, blocked, decor_d)
-					if transforms.size() > 0:
-						var decor_nodes: Array[Node3D] = parent.decor_manager.get_decor_meshes(decor_d, transforms)
+				var blocked: Dictionary = {}
+				for i in parent.decor_manager.decor_datas.size():
+					var decor_d := parent.decor_manager.decor_datas[i]
+					var dec_res := parent.decor_manager.get_decor_thread_result(chunk_center, blocked, decor_d, i, loc)
+					if dec_res.decor_transforms.size() > 0:
+						var decor_nodes: Array[Node3D] = parent.decor_manager.get_decor_meshes(decor_d, dec_res.decor_transforms)
 						for node in decor_nodes:
-							chunk.get_parent().add_child(node)
-						chunk.decor_nodes = decor_nodes
+							$"../Chunks".add_child(node)
+						chunk.decor_nodes.append_array(decor_nodes)
 	print("[EditorGen] Done! %d chunks." % total)
 
 func _editor_clear() -> void:

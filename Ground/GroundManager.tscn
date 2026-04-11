@@ -8,5 +8,7 @@ script = ExtResource("1_xuh48")
 
 [node name="EditorPreview" type="Node" parent="." unique_id=2039556513]
 script = ExtResource("2_8s517")
+editor_preview_radius = 3
+editor_biome = 3
 
 [node name="Chunks" type="Node3D" parent="." unique_id=2016001793]

@@ -42,33 +42,18 @@ func _init() -> void:
 	for scene_name in decor_scenes:
 		_multimesh_cache[scene_name] = get_decor_multimesh_data(decor_scenes[scene_name])
 
-func generate_transforms_for_decor(region_origin_m: Vector3, blocked: Dictionary, decor_d: DecorData) -> Array[Transform3D]:
+func get_decor_thread_result(region_origin_m: Vector3, blocked: Dictionary, decor_d: DecorData, decor_idx: int, loc:Vector2i) -> DecorThreadResult:
 	var chunk_size := GroundConstants.CHUNK_SIZE
 	var step: int = max(1, GroundConstants.DECOR_STEP)
 	var origin: Vector3 = region_origin_m + Vector3(-chunk_size * 0.5, 0, -chunk_size * 0.5)
 	var local_rng := RandomNumberGenerator.new()
-	if decor_datas.is_empty():
-		push_warning("No placement layers found")
-	var ignore_blocked: bool = decor_d != null and decor_d.mesh_size == Vector2i.ZERO
-
-	# Hoist invariant checks out of the hot loop.
-	if decor_d.decor_name.is_empty() or not decor_scenes.has(decor_d.decor_name.to_lower()):
-		return []
-
-	var spawn_chance: float = decor_d.spawn_chance
-	var empty_chance: float = GroundConstants.DECOR_EMPTY_CHANCE
-
+	local_rng.seed = loc.x * 73856093 ^ loc.y * 19349663 ^ decor_idx * 83492791 ^ GroundConstants.NOISE_SEED
 	var transforms_by_decor_name: Array[Transform3D] = []
 	for x in range(0, chunk_size, step):
 		for z in range(0, chunk_size, step):
 			var gx: int = int(float(x) / float(step))
 			var gz: int = int(float(z) / float(step))
-			if !ignore_blocked and blocked.has(Vector2i(gx, gz)):
-				continue
-			if local_rng.randf() < empty_chance:
-				continue
-			# Check spawn_chance BEFORE any noise sampling – cheapest rejection.
-			if local_rng.randf() >= spawn_chance:
+			if blocked.has(Vector2i(gx, gz)) || local_rng.randf() < GroundConstants.DECOR_EMPTY_CHANCE || local_rng.randf() >= decor_d.spawn_chance:
 				continue
 			var pos_x := x + origin.x
 			var pos_z := z + origin.z
@@ -79,7 +64,7 @@ func generate_transforms_for_decor(region_origin_m: Vector3, blocked: Dictionary
 					var rot_index: int = local_rng.randi() % 4
 					var rot_y: float = rot_index * PI * 0.5
 					_place_decor(decor_d, transforms_by_decor_name, pos_x, pos_z, blocked, gx, gz, step, rot_y)
-	return transforms_by_decor_name
+	return DecorThreadResult.new().init(loc, transforms_by_decor_name, blocked, decor_idx)
 
 func _is_decor_allowed_in_biome(decor: DecorData, biome_scores: Array[float]) -> bool:
 	var best_i := 0
@@ -196,7 +181,6 @@ func add_meshes_multimesh(transforms:Array[Transform3D], mesh_res: Mesh, mesh_lo
 		mm.set_instance_transform(i, transforms[i] * mesh_local_transform)
 	var mm_inst: MultiMeshInstance3D = MultiMeshInstance3D.new()
 	mm_inst.multimesh = mm
-	mm_inst.use_occlusion_culling = true
 	if vis_range > 0.0:
 		_apply_visibility_range_recursive(mm_inst, vis_range)
 	return mm_inst

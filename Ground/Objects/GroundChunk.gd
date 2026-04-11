@@ -6,6 +6,6 @@ var data: ChunkData = null
 var mesh_instance: MeshInstance3D = null
 var collision_body: StaticBody3D = null
 var decor_nodes: Array[Node3D] = [] # Node Array of decors in the chunks
-
 var are_decors_spawned: bool = false
 var lod_tier: int = GroundConstants.LOD_LEVELS.FAR # LOD tier used to generate this chunk.
+var blocked: Dictionary = {} # chunk x,z points blocked by placed decors (Vector2i -> true)

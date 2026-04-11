@@ -18,22 +18,22 @@ func _ready() -> void:
 	env.init()
 	await get_tree().process_frame
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	var player_chunk_loc: Vector2i = mob.get_player_chunk_loc()
 	if is_startup_done:
-		loaded_tick(player_chunk_loc)
+		loaded_tick(player_chunk_loc, delta)
 	else:
-		unloaded_tick(player_chunk_loc)
+		unloaded_tick(player_chunk_loc, delta)
 		
-func loaded_tick(player_chunk_loc: Vector2i) -> void:
-	ground.loaded_tick(player_chunk_loc)
+func loaded_tick(player_chunk_loc: Vector2i, delta: float) -> void:
+	ground.loaded_tick(player_chunk_loc, delta)
 	ui.loaded_tick(player_chunk_loc)
 	env.loaded_tick(mob.get_player_position())
 
-func unloaded_tick(player_chunk_loc: Vector2i) -> void:
-	ground.unloaded_tick(player_chunk_loc)
+func unloaded_tick(player_chunk_loc: Vector2i, delta: float) -> void:
+	ground.unloaded_tick(player_chunk_loc, delta)
 	var load_status := ground.get_load_status() + "\n" + mob.get_load_status()
 	ui.unloaded_tick(load_status)
 	check_startup(player_chunk_loc)
