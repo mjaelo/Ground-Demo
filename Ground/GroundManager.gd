@@ -10,7 +10,6 @@ var camera: Camera3D  # set by init, used for frustum culling
 #  Managers 
 var decor_manager: DecorManager
 var biome_manager: BiomeManager
-var texture_manager: TextureManager
 var chunk_manager: ChunkManager
 var ground_thread_manager: GroundThreadManager
 var boundary_detector: BoundaryDetector
@@ -29,7 +28,6 @@ func init(_player: Player, _enemy: Enemy) -> void:
 		camera = _player.get_node("%Camera3D") as Camera3D
 	
 	biome_manager = BiomeManager.new()
-	texture_manager = TextureManager.new()
 	boundary_detector = BoundaryDetector.new()
 	boundary_detector.initialize(player)
 	

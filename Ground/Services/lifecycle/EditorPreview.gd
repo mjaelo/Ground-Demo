@@ -28,27 +28,15 @@ func _editor_generate() -> void:
 			var biome_d:BiomeData = parent.biome_manager.biomes[i]
 			if i != editor_biome -1:
 				biome_d.biome_size = 0
-	
-	# Load textures and build shader material inline (avoids @tool dependency on GroundManager)
-	var loaded_textures: Array = GameUtils.load_from_json(GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures")
-	for tex_data in loaded_textures:
-		if tex_data.texture_path.is_empty():
-			continue
-		var tex = load(tex_data.texture_path)
-		if tex:
-			tex_data.texture = tex
 
 	var generator := parent.chunk_manager
-	var mat: ShaderMaterial = parent.texture_manager.shader_material
-
+	GroundUtils.GROUND_SHADER_MATERIAL = GroundUtils.get_shader_material()
 	var r: int = editor_preview_radius
-	var total: int = (2 * r + 1) * (2 * r + 1)
-
 	for rx in range(-r, r + 1):
 		for ry in range(-r, r + 1):
 			var loc := Vector2i(rx, ry)
 			var thread_res := generator.get_chunk_thread_result(loc, GroundConstants.LOD_LEVELS.CLOSE)
-			var chunk := GroundUtils.build_chunk(thread_res.chunk_data, mat, thread_res.lod_tier)
+			var chunk := GroundUtils.build_chunk(thread_res.chunk_data, thread_res.lod_tier)
 			chunk.mesh_instance.name = "EditorChunk_%d_%d" % [rx, ry]
 			$"../Chunks".add_child(chunk.mesh_instance)
 			chunk.mesh_instance.owner = get_tree().edited_scene_root
@@ -64,6 +52,7 @@ func _editor_generate() -> void:
 						for node in decor_nodes:
 							$"../Chunks".add_child(node)
 						chunk.decor_nodes.append_array(decor_nodes)
+	var total: int = (2 * r + 1) * (2 * r + 1)
 	print("[EditorGen] Done! %d chunks." % total)
 
 func _editor_clear() -> void:

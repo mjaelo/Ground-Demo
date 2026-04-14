@@ -146,7 +146,7 @@ func _apply_chunk_results(frustum: Array[Plane]) -> void:
 
 		if parent.chunk_manager.chunks.has(chunk_d.loc):
 			parent.chunk_manager._remove_chunk(chunk_d.loc)
-		var chunk: GroundChunk = GroundUtils.build_chunk(chunk_d, parent.texture_manager.shader_material, thread_result.lod_tier)
+		var chunk: GroundChunk = GroundUtils.build_chunk(chunk_d, thread_result.lod_tier)
 		
 		chunk.lod_tier = thread_result.lod_tier
 		chunk.are_decors_spawned = false

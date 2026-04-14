@@ -13,6 +13,25 @@ static var WATER_MATERIAL: StandardMaterial3D = (func () -> StandardMaterial3D:
 	water_material.roughness = 0.2
 	water_material.metallic = 0.0
 	return water_material).call()
+static var GROUND_SHADER_MATERIAL: ShaderMaterial = get_shader_material()
+static func get_shader_material() -> ShaderMaterial:
+	var texture_datas:Array[TextureData] =[]
+	texture_datas.append_array(GameUtils.load_from_json(GroundConstants.TEXTURES_FILE_PATH, TextureData, "textures"))
+	var images: Array[Image] = []
+	images.append_array(texture_datas.map(func (t: TextureData) -> Image: return t.image)) 
+	
+	var tex_arr := Texture2DArray.new()
+	var tex_array := tex_arr if tex_arr.create_from_images(images) == OK else null
+	
+	var shader: Shader = load(GroundConstants.TERRAIN_SHADER_PATH)
+	var shader_mat := ShaderMaterial.new()
+	shader_mat.shader = shader
+	if tex_array:
+		shader_mat.set_shader_parameter("terrain_textures", tex_array)
+	shader_mat.set_shader_parameter("texture_scale", GroundConstants.TEXTURE_SCALE)
+	shader_mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
+	shader_mat.set_shader_parameter("texture_count", texture_datas.size())
+	return shader_mat
 
 # GENERAL GROUND UTILS
 static func world_pos_to_chunk_loc(pos: Vector3) -> Vector2i:
@@ -27,7 +46,7 @@ static func height_from_heightmap(img: Image, world_x:float, world_z:float, loc:
 	return img.get_pixel(px, py).r
 
 # CHUNK UTILS
-static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial, lod_tier: int) -> GroundChunk:
+static func build_chunk(chunk_d: ChunkData, lod_tier: int) -> GroundChunk:
 	## Build GroundChunk from a ChunkData.
 	var chunk := GroundChunk.new()
 	chunk.data = chunk_d
@@ -40,7 +59,7 @@ static func build_chunk(chunk_d: ChunkData, shader_material: ShaderMaterial, lod
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	# Create per-instance material with splatmap texture
-	var mat: ShaderMaterial = shader_material.duplicate() as ShaderMaterial
+	var mat: ShaderMaterial = GROUND_SHADER_MATERIAL.duplicate() as ShaderMaterial
 	var splat_tex := ImageTexture.create_from_image(chunk_d.splatmap)
 	mat.set_shader_parameter("splatmap", splat_tex)
 	mat.set_shader_parameter("region_size", float(GroundConstants.CHUNK_SIZE))
