@@ -13,4 +13,4 @@ Lists of biome, decors and textures can be easily expanded.
   - path texture: https://www.shutterstock.com/image-illustration/view-above-cartoon-stone-on-grass-542584729
   - rock texture: https://www.shutterstock.com/image-photo/warm-limestone-texture-159548051
 - AI disclosure: AI has been used to help debug code problems.
-All other assets, including 3D models and code has been made by me.
+- All other assets, including 3D models and code has been made by me.
