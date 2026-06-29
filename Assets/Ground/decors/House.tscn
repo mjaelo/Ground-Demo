@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cknapliiqux2u"]
+
+[ext_resource type="Script" path="res://Ground/Services/Builders/HouseBuilder.cs" id="1_qssya"]
+
+[node name="House" type="StaticBody3D" unique_id=913121615]
+script = ExtResource("1_qssya")

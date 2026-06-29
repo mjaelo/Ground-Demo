@@ -1,0 +1,35 @@
+{
+  "decors": [
+    {
+      "DecorName": "Grass",
+      "SpawnChance": 0.24,
+      "MaxSlope": 18.0,
+      "VisibilityRange": 80.0,
+      "Priority": 1
+    },
+    {
+      "DecorName": "Tree",
+      "SpawnChance": 0.0005,
+      "MaxSlope": 15.0,
+      "VisibilityRange": 200.0,
+      "Priority": 5
+    },
+    {
+      "DecorName": "Rock",
+      "SpawnChance": 0.001,
+      "MaxSlope": 18.0,
+      "MeshSize": [5, 5],
+      "VisibilityRange": 150.0,
+      "Priority": 2
+    },
+    {
+      "DecorName": "House",
+      "SpawnChance": 0.05,
+      "MaxSlope": 15.0,
+      "MeshSize": [10,10],
+      "VisibilityRange": 400.0,
+      "Priority": 10,
+      "GeneratorScript": "res://Ground/Services/Builders/HouseBuilder.cs"
+    }
+  ]
+}

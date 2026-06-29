@@ -1,0 +1,46 @@
+{
+  "biomes": [
+    {
+      "BiomeName": "Plains",
+      "SteepnessLevel": 0.3,
+      "BiomeRarity": 1.25,
+      "BiomeSize": 1.0,
+      "FlatTextureId": 1,
+      "SteepTextureId": 0,
+      "LodTextureId": 1,
+      "AllowedDecorIds": ["Grass", "Tree", "Rock"]
+    },
+    {
+      "BiomeName": "Mountain",
+      "SteepnessLevel": 1.0,
+      "FlatTextureId": 1,
+      "SteepTextureId": 0,
+      "LodTextureId": 0,
+      "BiomeRarity": 2,
+      "BiomeSize": 0.5,
+      "AllowedDecorIds": ["Rock","Grass", "Tree"]
+    },
+    {
+      "BiomeName": "Village",
+      "SteepnessLevel": 0.0,
+      "FlatTextureId": 3,
+      "SteepTextureId": 0,
+      "LodTextureId": 3,
+      "BiomeRarity": 3.0,
+      "BiomeSize": 0.15,
+      "AllowedDecorIds": ["House","Grass", "Tree", "Rock"]
+    },
+    {
+      "BiomeName": "Lake",
+      "SteepnessLevel": 0.2,
+      "Offset": -200.0,
+      "FlatTextureId": 2,
+      "SteepTextureId": 2,
+      "LodTextureId": 2,
+      "BiomeRarity": 2,
+      "BiomeSize": 2.0,
+      "HasWater": true,
+      "AllowedDecorIds": ["Rock"]
+    }
+  ]
+}

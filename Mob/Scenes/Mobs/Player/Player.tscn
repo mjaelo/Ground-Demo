@@ -1,0 +1,44 @@
+[gd_scene format=3 uid="uid://dajfdgtda7t1w"]
+
+[ext_resource type="Script" path="res://Mob/Scenes/Mobs/Player/Player.cs" id="1_o0i0q"]
+[ext_resource type="Script" path="res://Mob/Services/CameraManager.cs" id="2_j1ime"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_smq6u"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_lwhhq"]
+height = 1.5
+
+[sub_resource type="SeparationRayShape3D" id="SeparationRayShape3D_twc2s"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_lsqiy"]
+
+[node name="Player" type="CharacterBody3D" unique_id=1107265331]
+collision_layer = 2
+script = ExtResource("1_o0i0q")
+
+[node name="CameraManager" type="Node3D" parent="." unique_id=1628585958]
+script = ExtResource("2_j1ime")
+
+[node name="Arm" type="SpringArm3D" parent="CameraManager" unique_id=974403779]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 2.32515, -0.0321627)
+shape = SubResource("SphereShape3D_smq6u")
+spring_length = 6.0
+margin = 0.5
+
+[node name="Camera3D" type="Camera3D" parent="CameraManager/Arm" unique_id=735490015]
+unique_name_in_owner = true
+near = 0.25
+far = 16384.0
+
+[node name="CollisionShapeBody" type="CollisionShape3D" parent="." unique_id=881558114]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0)
+shape = SubResource("CapsuleShape3D_lwhhq")
+
+[node name="CollisionShapeRay" type="CollisionShape3D" parent="." unique_id=606180530]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 1, 0)
+shape = SubResource("SeparationRayShape3D_twc2s")
+
+[node name="Body" type="MeshInstance3D" parent="." unique_id=828170067]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("CapsuleMesh_lsqiy")

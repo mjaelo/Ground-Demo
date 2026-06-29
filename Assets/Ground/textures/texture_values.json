@@ -1,0 +1,8 @@
+﻿{
+  "textures": [
+      "res://Assets/Ground/textures/rock_tex.png",
+      "res://Assets/Ground/textures/grass_tex.png",
+      "res://Assets/Ground/textures/mud_tex.png",
+      "res://Assets/Ground/textures/path_tex.png"
+  ]
+}

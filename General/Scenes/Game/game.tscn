@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://bcgfnku3c7857"]
+
+[ext_resource type="Script" uid="uid://drw54specqmwx" path="res://General/Scenes/Game/Game.cs" id="1_f6sj0"]
+[ext_resource type="PackedScene" path="res://General/Scenes/Environment/Environment.tscn" id="2_env"]
+[ext_resource type="PackedScene" path="res://UI/UiManager.tscn" id="3_ui"]
+[ext_resource type="PackedScene" path="res://Ground/GroundManager.tscn" id="4_ground"]
+[ext_resource type="PackedScene" path="res://Mob/MobManager.tscn" id="5_mob"]
+
+[node name="Game" type="Node3D" unique_id=1705216295]
+script = ExtResource("1_f6sj0")
+
+[node name="Environment" parent="." unique_id=1617233062 instance=ExtResource("2_env")]
+
+[node name="UI" parent="." unique_id=246979443 instance=ExtResource("3_ui")]
+
+[node name="Ground" parent="." unique_id=269219166 instance=ExtResource("4_ground")]
+
+[node name="Mob" parent="." unique_id=509368118 instance=ExtResource("5_mob")]

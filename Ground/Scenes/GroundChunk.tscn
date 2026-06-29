@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://dcjc1oe4mo8vh"]
+
+[ext_resource type="Script" path="res://Ground/Scenes/GroundChunk.cs" id="1_vj38u"]
+
+[node name="GroundChunk" type="Node3D" unique_id=1708230974]
+script = ExtResource("1_vj38u")
+
+[node name="Decors" type="Node3D" parent="." unique_id=594424120]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=687781288]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1238222346]
